@@ -1,4 +1,4 @@
-// controllers/importController.js
+
 import XLSX from "xlsx";
 import pool from "../../config/db.js";
 import axios from "axios";
@@ -502,5 +502,44 @@ export const getDatasetsWithoutFilter = async (req, res) => {
   }
 };
 
+export const getDatasetSources = async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT source_id, source_name, description, created_at 
+      FROM dataset_source 
+      ORDER BY created_at DESC
+    `);
+    res.json({ success: true, sources: rows });
+  } catch (error) {
+    console.error("Error fetching dataset sources:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+
+export const deleteDatasetSource = async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+   
+    await client.query('BEGIN');
+
+    await client.query('DELETE FROM dataset WHERE source_id = $1', [id]);
+    
+    await client.query('DELETE FROM dataset_source WHERE source_id = $1', [id]);
+  
+    await client.query('COMMIT');
+    
+    res.json({ success: true, message: "Dataset source and all related leads deleted successfully." });
+  } catch (error) {
+  
+    await client.query('ROLLBACK');
+    console.error("Error deleting dataset source:", error);
+    res.status(500).json({ success: false, message: "Failed to delete dataset source." });
+  } finally {
+   
+    client.release();
+  }
+};
 
 

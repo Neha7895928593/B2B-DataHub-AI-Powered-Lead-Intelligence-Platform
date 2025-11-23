@@ -1,11 +1,10 @@
 import express from 'express';
 import upload from '../../config/multer.js';
-import { createCategory, createCity, createCountry, createState, getCategories, getCities, getCountries, getDatasetRecords, getDatasets, getStates, uploadDataFile } from '../../controllers/admin/manageDataset.js';
+import { createCategory, createCity, createCountry, createState, deleteDatasetSource, getCategories, getCities, getCountries, getDatasetRecords, getDatasets, getDatasetSources, getStates, uploadDataFile } from '../../controllers/admin/manageDataset.js';
 
 
 const router = express.Router();
 
-// Accept two files: 'file' and 'proofAttachment'
 router.post(
   '/admin/manage-data/upload-data',
   upload.fields([
@@ -31,11 +30,14 @@ router.post("/categories", createCategory);
 
 router.post("/countries", createCountry);
 
-      // query: ?countryId=1
+      
 router.post("/states", createState);
 
-// Cities
-     // query: ?stateId=1
+router.get("/datasets/sources", getDatasetSources);
+
+
+router.delete("/datasets/sources/:id", deleteDatasetSource);
+
 router.post("/cities", createCity);
 
 

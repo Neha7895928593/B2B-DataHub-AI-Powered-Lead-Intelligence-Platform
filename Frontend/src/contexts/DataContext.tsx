@@ -139,9 +139,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  //  Fetch Datasets
-
-  //  Fetch Datasets
 const fetchDatasets = async (filters: { category?: string; country?: string; state?: string; city?: string }) => {
   try {
     const data = await getDatasetsSummary(filters);
@@ -182,89 +179,6 @@ const fetchDatasets = async (filters: { category?: string; country?: string; sta
     setDatasets([]);
   }
 };
-
-
-
-// const fetchDatasets = async (filters: { category?: string; country?: string; state?: string; city?: string }) => {
-//   try {
-//     const data = await getDatasetsSummary(filters);
-//    const mappedDatasets: Dataset[] = data.lists.map((list: any, index: number) => ({
-//   id: index + 1,
-//   name: list.name,
-//   category: list.category,
-//   category_id: list.category_id,
-//   country: list.country,
-//   country_id: list.country_id,
-//   state: list.state,
-//   state_id: list.state_id,
-//   city: list.city,
-//   city_id: list.city_id,
-//   total_records: data.summary.totalRecords,
-//   total_emails: data.summary.emailCount,
-//   total_phones: data.summary.phoneCount,
-//   sample_file_Data: list.sample,
-//   filtered_total_price: list.total_price,
-//   filtered_total_records: list.total_records,
-//   filtered_email_count: list.email_count,
-//   filtered_phone_count: list.phone_count,
-//   view_record:list.view
-
-// }));
-
-
-//     setDatasets(mappedDatasets);  
-//   } catch (error) {
-//     console.error("Error fetching datasets:", error);
-//   }
-// };
-
-
-
-
-//  const fetchDatasets = async (filters: { category?: string; country?: string; state?: string }) => {
-//   try {
-//     const data = await getDatasetsSummary(filters);
-//     const dataset = data.filteredData;
-
-//     const mappedDatasets: Dataset[] = data.lists.map((list: any, index: number) => {
-      
-
-//       return {
-//         id: index + 1,
-//         name: list.name,
-//         // category: list.category,
-//         // country: list.country,
-//         // state: list.state,
-//         // city: list.city,
-//         total_records: data.summary.totalRecords,
-//         total_emails: data.summary.emailCount,
-//         total_phones: data.summary.phoneCount,
-//         sample_file_path: list.samples[index],
-//         filtered_total_price:list.total_price,
-//          filtered_total_records:list.total_records,
-//           filtered_email_count:list.email_count,
-//           filtered_phone_count:list.phone_count,
-//       };
-//     });
-
-//     setDatasets(mappedDatasets);  
-//   } catch (error) {
-//     console.error("Error fetching datasets:", error);
-//   }
-// };
-
-
-  //  Fetch Dataset Records
-  
-  
-  // const fetchDatasetRecords = async (id: string) => {
-  //   try {
-  //     const data = await getDatasetRecords(id);
-  //     setDatasetRecords(data);
-  //   } catch (error) {
-  //     console.error("Error fetching dataset records:", error);
-  //   }
-  // };
 
   return (
     <DataContext.Provider

@@ -1,2376 +1,326 @@
+
 import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
+import { useToast } from "@/hooks/use-toast";
+;
+
+import {
+  getCategories,
+  createCategory,
+  uploadData,
+  getDatasetSources,
+  deleteDatasetSource
+} from '@/api/apiHub';
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Upload, FileText, CheckCircle, X, Download, Eye, Trash2, Plus } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import * as XLSX from "xlsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Upload, FileText, X, Eye, Trash2, Plus, Loader2 } from "lucide-react";
 
-// Mock API functions
-const uploadData = async (data: FormData) => {
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  return { success: true };
-};
-
-const createCategory = async (data: any) => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { success: true };
-};
-
-const createCountry = async (data: any) => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { success: true };
-};
-
-const createCity = async (data: any) => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { success: true };
-};
-
-const createState = async (data: any) => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { success: true };
-};
 
 interface UploadedFile {
-  id: string;
-  name: string;
-  size: string;
-  uploadDate: string;
-  status: 'processing' | 'completed' | 'failed';
-  records: number;
+  source_id: number;
+  source_name: string;
+  description: string;
+  created_at: string;
 }
+
+interface Category {
+  category_id: number;
+  category_name: string;
+}
+
+const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
+  <Label className="font-medium">
+    {children} <span className="text-destructive">*</span>
+  </Label>
+);
 
 export default function AdminUploads() {
   const { toast } = useToast();
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([
-    {
-      id: '1',
-      name: 'restaurants_usa.csv',
-      size: '2.5 MB',
-      uploadDate: '2024-01-15',
-      status: 'completed',
-      records: 15420
-    },
-    {
-      id: '2',
-      name: 'hotels_uk.xlsx',
-      size: '1.8 MB',
-      uploadDate: '2024-01-14',
-      status: 'processing',
-      records: 8930
-    },
-  ]);
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingFiles, setIsFetchingFiles] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileHeaders, setFileHeaders] = useState<string[]>([]);
   const [fieldMappings, setFieldMappings] = useState<{ [key: string]: string }>({});
   const [showMapping, setShowMapping] = useState(false);
-  const [availableFields, setAvailableFields] = useState([
+  const [newDataset, setNewDataset] = useState({
+    category: '',
+    description: '',
+    price: '',
+    proofAttachment: null as File | null,
+  });
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+
+  const databaseFields = [
+    { key: 'name', label: 'Lead Name', required: true },
+    { key: 'email', label: 'Email', required: true },
+    { key: 'phone', label: 'Phone', required: true },
     { key: 'country', label: 'Country', required: true },
     { key: 'state', label: 'State', required: false },
     { key: 'city', label: 'City', required: false },
-    { key: 'name', label: 'Name', required: false },
     { key: 'address', label: 'Address', required: false },
-    { key: 'phone', label: 'Phone', required: false },
-    { key: 'email', label: 'Email', required: false },
-  ]);
+    { key: 'price', label: 'Price (per lead)', required: false },
+  ];
 
-  // Custom field form states
-  const [showCustomFieldForm, setShowCustomFieldForm] = useState(false);
-  const [customFieldName, setCustomFieldName] = useState('');
-  const [customFieldDefaultValue, setCustomFieldDefaultValue] = useState('');
-  const [customFieldValues, setCustomFieldValues] = useState<{ [key: string]: string }>({});
-
-  // Custom database field form states  
-  const [showCustomDbFieldForm, setShowCustomDbFieldForm] = useState(false);
-  const [customDbFieldName, setCustomDbFieldName] = useState('');
-  const [customDbFieldRequired, setCustomDbFieldRequired] = useState(false);
-
-  const [newDataset, setNewDataset] = useState({
-    category:'',
-    description: '',
-    price: '',
-    proofAttachment: null,
-  });
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    handleFileUpload(files);
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      readFileHeaders(file);
-      handleFileUpload([file]);
+  // --- Data Fetching ---
+  const fetchInitialData = async () => {
+    setIsFetchingFiles(true);
+    try {
+      const [catData, filesData] = await Promise.all([
+        getCategories(),
+        getDatasetSources()
+      ]);
+      if (catData.success) setCategories(catData.categories);
+      if (filesData.success) setUploadedFiles(filesData.sources);
+    } catch (error) {
+      toast({ title: "Error fetching data", description: "Could not load categories or uploaded files.", variant: "destructive" });
+    } finally {
+      setIsFetchingFiles(false);
     }
   };
 
-  const readFileHeaders = (file: File) => {
-    const reader = new FileReader();
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
-    reader.onload = (e) => {
-      const data = e.target?.result;
-
-      if (!data) return;
-
-      if (file.name.endsWith(".csv")) {
-        // CSV case
-        const text = data as string;
-        const lines = text.split("\n");
-        const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
-        setFileHeaders(headers);
-        setShowMapping(true);
-
-      } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
-        // Excel case
-        const workbook = XLSX.read(data, { type: "binary" });
-        const sheetName = workbook.SheetNames[0]; // first sheet
-        const sheet = workbook.Sheets[sheetName];
-
-        // Convert sheet to JSON with header row
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        const headers = (jsonData[0] as string[]).map((h) => h.trim());
-
-        setFileHeaders(headers);
-        setShowMapping(true);
-      }
-    };
-
-    if (file.name.endsWith(".csv")) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsBinaryString(file); // for excel
-    }
+  const resetForm = () => {
+    setNewDataset({ category: "", description: '', price: '', proofAttachment: null });
+    setSelectedFile(null);
+    setFileHeaders([]);
+    setFieldMappings({});
+    setShowMapping(false);
+    const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+    if (fileInput) fileInput.value = "";
   };
 
-  const handleFileUpload = (files: File[]) => {
-    files.forEach((file) => {
-      if (file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        const newFile: UploadedFile = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-          uploadDate: new Date().toISOString().split('T')[0],
-          status: 'processing',
-          records: Math.floor(Math.random() * 50000) + 1000
+  const handleFileSelect = (files: FileList | null) => {
+    if (files && files[0]) {
+      const file = files[0];
+      if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        setSelectedFile(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const data = e.target?.result;
+          if (!data) return;
+          try {
+            const workbook = XLSX.read(data, { type: "binary" });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            const headers = (jsonData[0] as string[]).map(h => String(h || "").trim()).filter(Boolean);
+            setFileHeaders(headers);
+            setShowMapping(true);
+          } catch (error) {
+            toast({ title: "Error reading file", description: "The file might be corrupt.", variant: "destructive" });
+          }
         };
-
-        setUploadedFiles(prev => [...prev, newFile]);
-
-        // Simulate processing
-        setTimeout(() => {
-          setUploadedFiles(prev =>
-            prev.map(f => f.id === newFile.id ? { ...f, status: 'completed' as const } : f)
-          );
-        }, 3000);
-
-        toast({
-          title: "File uploaded successfully",
-          description: `${file.name} is being processed.`,
-        });
+        reader.readAsBinaryString(file);
       } else {
-        toast({
-          title: "Invalid file type",
-          description: "Please upload CSV or Excel files only.",
-          variant: "destructive",
-        });
+        toast({ title: "Invalid file type", variant: "destructive" });
       }
-    });
-  };
-
-  const handleDeleteFile = (id: string) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== id));
-    toast({
-      title: "File deleted",
-      description: "Dataset has been removed successfully.",
-    });
-  };
-
-  const addCustomField = () => {
-    if (!customFieldName.trim()) {
-      toast({
-        title: "Field name required",
-        description: "Please enter a field name.",
-        variant: "destructive",
-      });
-      return;
     }
-
-    const key = customFieldName.toLowerCase().replace(/\s+/g, "_");
-    
-    // // Check if field already exists
-    // if (availableFields.some(f => f.key === key) || fileHeaders.includes(customFieldName)) {
-    //   toast({
-    //     title: "Field already exists",
-    //     description: "This field name already exists.",
-    //     variant: "destructive",
-    //   });
-    //   return;
-    // }
-
-    // Add to file headers (left side)
-    setFileHeaders(prev => [...prev, customFieldName]);
-    
-    // Store the default value for this custom field
-    if (customFieldDefaultValue.trim()) {
-      setCustomFieldValues(prev => ({
-        ...prev,
-        [customFieldName]: customFieldDefaultValue
-      }));
-    }
-
-    // Reset form
-    setCustomFieldName('');
-    setCustomFieldDefaultValue('');
-    setShowCustomFieldForm(false);
-
-    toast({
-      title: "Custom field added",
-      description: `Field "${customFieldName}" has been added to file columns.`,
-    });
-  };
-
-  const addCustomDbField = () => {
-    if (!customDbFieldName.trim()) {
-      toast({
-        title: "Field name required",
-        description: "Please enter a database field name.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const key = customDbFieldName.toLowerCase().replace(/\s+/g, "_");
-    
-    // Check if field already exists
-    // if (availableFields.some(f => f.key === key)) {
-    //   toast({
-    //     title: "Field already exists",
-    //     description: "This database field name already exists.",
-    //     variant: "destructive",
-    //   });
-    //   return;
-    // }
-
-    const newField = {
-      key,
-      label: customDbFieldName,
-      required: customDbFieldRequired
-    };
-
-    setAvailableFields(prev => [...prev, newField]);
-
-    // Reset form
-    setCustomDbFieldName('');
-    setCustomDbFieldRequired(false);
-    setShowCustomDbFieldForm(false);
-
-    toast({
-      title: "Database field added",
-      description: `Field "${customDbFieldName}" has been added to database fields.`,
-    });
-  };
-
-  const removeCustomField = (fieldKey: string) => {
-    setAvailableFields(prev => prev.filter(f => f.key !== fieldKey));
-    setFieldMappings(prev => {
-      const newMappings = { ...prev };
-      delete newMappings[fieldKey];
-      return newMappings;
-    });
-    toast({
-      title: "Field removed",
-      description: "Custom database field has been removed.",
-    });
-  };
-
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleInputChange = (field: string, value: string | File | null) => {
-    setNewDataset(prev => ({ ...prev, [field]: value }));
   };
 
   const handleCreateDataset = async () => {
-    if (!selectedFile) {
-      toast({
-        title: "No file selected",
-        description: "Please upload a CSV or Excel file before creating dataset.",
-        variant: "destructive",
-      });
-      return;
+    if (!selectedFile || !newDataset.category || !newDataset.description || !newDataset.price) {
+      return toast({ title: "Missing Information", description: "Please fill all required fields and select a file.", variant: "destructive" });
+    }
+    const missingMappings = databaseFields.filter(f => f.required && !fieldMappings[f.key]);
+    if (missingMappings.length > 0) {
+      return toast({ title: "Incomplete Mapping", description: `Map required fields: ${missingMappings.map(f => f.label).join(', ')}`, variant: "destructive" });
     }
 
-    // Check if mapping is complete for required fields
-    const requiredMappings = ['country','name','address',"phone","email"];
-    const missingMappings = requiredMappings.filter(field => !fieldMappings[field]);
-    
-    // if (missingMappings.length > 0) {
-    //   toast({
-    //     title: "Incomplete field mapping",
-    //     description: `Please map the following required fields: ${missingMappings.join(', ')}`,
-    //     variant: "destructive",
-    //   });
-    //   return;
-    // }
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("category", newDataset.category);
+    formData.append("description", newDataset.description);
+    formData.append("price", newDataset.price);
+    formData.append("fieldMappings", JSON.stringify(fieldMappings));
+    if (newDataset.proofAttachment) formData.append("proofAttachment", newDataset.proofAttachment);
 
-    // if (!newDataset.description || !newDataset.price) {
-    //   toast({
-    //     title: "Missing required fields",
-    //     description: "Category, Country, Description and Price are required.",
-    //     variant: "destructive",
-    //   });
-    //   return;
-    // }
-
-    const data = new FormData();
-    data.append("category", newDataset.category); 
-    data.append("description", newDataset.description); 
-    data.append("price", newDataset.price);             
-    data.append("file", selectedFile);
-    
-    // Add field mappings to the form data
-    data.append("fieldMappings", JSON.stringify(fieldMappings));
-    
-    // Add custom field values
-    data.append("customFieldValues", JSON.stringify(customFieldValues));
-                 
-    if (newDataset.proofAttachment) {
-      data.append("proofAttachment", newDataset.proofAttachment); 
-    }
-
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      const res = await uploadData(data);
+      const response = await uploadData(formData); // Aapke apiHub se
       toast({
-        title: "Dataset created",
-        description: "New dataset has been added to the system.",
+        title: "Upload Successful!",
+        description: `Added: ${response.summary.added}, Updated: ${response.summary.updated}.`,
       });
-      setNewDataset({
-        category:"",
-        description: '',
-        price: '',
-        proofAttachment:null,
-      });
-      setSelectedFile(null);
-      setFileHeaders([]);
-      setFieldMappings({});
-      setCustomFieldValues({});
-      setShowMapping(false);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to upload dataset.",
-        variant: "destructive",
-      });
+      resetForm();
+      fetchInitialData();
+    } catch (error: any) {
+      toast({ title: "Upload Failed", description: error.response?.data?.message || "An error occurred.", variant: "destructive" });
     } finally {
-      setIsLoading(false); 
+      setIsLoading(false);
     }
   };
 
-  const RequiredLabel = ({ children }: { children: string }) => (
-    <Label className="font-medium">
-      {children} <span className="text-destructive">*</span>
-    </Label>
-  );
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge className="bg-primary/10 text-primary border-primary/20">Completed</Badge>;
-      case 'processing':
-        return <Badge className="bg-secondary text-secondary-foreground">Processing</Badge>;
-      case 'failed':
-        return <Badge className="bg-destructive/10 text-destructive border-destructive/20">Failed</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
+  const handleAddNewCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const response = await createCategory(newCategoryName); 
+      if (response.success) {
+        toast({ title: `Category "${newCategoryName}" created.` });
+        setCategories(prev => [...prev, response.category]);
+        setNewDataset(prev => ({ ...prev, category: response.category.category_name }));
+        setIsCategoryDialogOpen(false);
+        setNewCategoryName("");
+      }
+    } catch (error) {
+      toast({ title: "Failed to create category", variant: "destructive" });
     }
   };
 
+  const handleDeleteFile = async (id: number, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"? This will delete all associated leads.`)) return;
+    try {
+      await deleteDatasetSource(id); // Aapke apiHub se
+      toast({ title: `"${name}" has been deleted.` });
+      fetchInitialData();
+    } catch (error) {
+      toast({ title: "Failed to delete file", variant: "destructive" });
+    }
+  };
+
+  // --- Render ---
   return (
     <div className="space-y-6">
+      <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Create New Category</DialogTitle></DialogHeader>
+          <Input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="e.g., Real Estate Agents" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddNewCategory}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div>
-        <h1 className="text-3xl font-bold text-foreground">File Uploads</h1>
-        <p className="text-muted-foreground">Upload and manage dataset files</p>
+        <h1 className="text-3xl font-bold">B2B Lead Import</h1>
+        <p className="text-muted-foreground">Upload, map, and process lead data files.</p>
       </div>
 
-      {/* Enhanced Field Mapping Section */}
-      {showMapping && fileHeaders.length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Map File Columns to Database Fields</h2>
-          <p className="text-muted-foreground mb-6">
-            Connect your CSV columns to our database fields. Required fields must be mapped before creating the dataset.
-          </p>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Side - File Columns */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  File Columns ({fileHeaders.length})
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCustomFieldForm(!showCustomFieldForm)}
-                  className="h-8"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Custom Column
-                </Button>
+      <div className={`grid gap-6 ${showMapping ? 'grid-cols-1 lg:grid-cols-2 items-start' : 'grid-cols-1'}`}>
+
+        <div className="space-y-6">
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">1. Upload Lead File</h2>
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setIsDragOver(false); handleFileSelect(e.dataTransfer.files); }}
+            >
+              <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-2">Drag & Drop File Here</h3>
+              <p className="text-muted-foreground mb-4">Supports .csv, .xlsx, .xls</p>
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => handleFileSelect(e.target.files)} className="hidden" id="file-upload" />
+              <Button asChild variant="outline"><label htmlFor="file-upload" className="cursor-pointer"><FileText className="w-4 h-4 mr-2" />Or Choose File</label></Button>
+            </div>
+            {selectedFile && (
+              <div className="mt-4 p-3 border rounded-lg bg-muted/50 flex items-center justify-between">
+                <div className="flex items-center gap-3 overflow-hidden"><FileText className="w-5 h-5 text-primary flex-shrink-0" /><p className="font-medium text-sm truncate">{selectedFile.name}</p></div>
+                <Button variant="ghost" size="sm" onClick={resetForm} className="text-destructive hover:text-destructive h-7 w-7 p-0"><X className="w-4 h-4" /></Button>
               </div>
+            )}
+          </Card>
 
-              {/* Custom Field Form */}
-              {showCustomFieldForm && (
-                <Card className="p-4 bg-accent/30">
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-sm font-medium">Field Name</Label>
-                      <Input
-                        value={customFieldName}
-                        onChange={(e) => setCustomFieldName(e.target.value)}
-                        placeholder="e.g., Country, State, etc."
-                        className="h-8"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Default Value (Optional)</Label>
-                      <Input
-                        value={customFieldDefaultValue}
-                        onChange={(e) => setCustomFieldDefaultValue(e.target.value)}
-                        placeholder="e.g., USA, N/A, etc."
-                        className="h-8"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={addCustomField}
-                        className="h-8"
-                      >
-                        Add Field
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowCustomFieldForm(false);
-                          setCustomFieldName('');
-                          setCustomFieldDefaultValue('');
-                        }}
-                        className="h-8"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="space-y-2">
-                  {fileHeaders.map((header, idx) => {
-                    const isMapped = Object.values(fieldMappings).includes(header);
-                    const hasDefaultValue = customFieldValues[header];
-                    const isCustomColumn = customFieldValues[header] !== undefined;
-                    
-                    return (
-                      <div key={idx} className={`flex items-center justify-between p-2 rounded border ${
-                        isMapped ? 'bg-accent border-primary/20' : 'bg-background border-border'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            isMapped ? 'bg-primary' : 'bg-muted-foreground'
-                          }`} />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">{header}</span>
-                            {hasDefaultValue && (
-                              <span className="text-xs text-muted-foreground">
-                                Default: {customFieldValues[header]}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isMapped && (
-                            <Badge variant="secondary" className="text-xs">
-                              Mapped
-                            </Badge>
-                          )}
-                          {isCustomColumn && (
-                            <Badge variant="outline" className="text-xs bg-primary/10">
-                              Custom
-                            </Badge>
-                          )}
-                          {isCustomColumn && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setFileHeaders(prev => prev.filter(h => h !== header));
-                                setCustomFieldValues(prev => {
-                                  const newValues = { ...prev };
-                                  delete newValues[header];
-                                  return newValues;
-                                });
-                                // Remove from field mappings if mapped
-                                setFieldMappings(prev => {
-                                  const newMappings = { ...prev };
-                                  Object.keys(newMappings).forEach(key => {
-                                    if (newMappings[key] === header) {
-                                      delete newMappings[key];
-                                    }
-                                  });
-                                  return newMappings;
-                                });
-                              }}
-                              className="text-destructive hover:text-destructive h-6 w-6 p-0"
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">2. Dataset Information</h2>
+            <div className="space-y-4">
+              <div>
+                <RequiredLabel>Lead Category</RequiredLabel>
+                <div className="flex gap-2">
+                  <Select value={newDataset.category} onValueChange={(value) => setNewDataset(p => ({ ...p, category: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger>
+                    <SelectContent>{categories.map(c => <SelectItem key={c.category_id} value={c.category_name}>{c.category_name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button variant="outline" size="icon" onClick={() => setIsCategoryDialogOpen(true)}><Plus className="w-4 h-4" /></Button>
                 </div>
               </div>
-            </div>
-
-            {/* Right Side - System Fields */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5" />
-                  Database Fields ({availableFields.length})
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCustomDbFieldForm(!showCustomDbFieldForm)}
-                  className="h-8"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Database Field
-                </Button>
-              </div>
-
-              {/* Custom Database Field Form */}
-              {showCustomDbFieldForm && (
-                <Card className="p-4 bg-accent/30">
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-sm font-medium">Database Field Name</Label>
-                      <Input
-                        value={customDbFieldName}
-                        onChange={(e) => setCustomDbFieldName(e.target.value)}
-                        placeholder="e.g., Website, Rating, etc."
-                        className="h-8"
-                      />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="customDbFieldRequired"
-                        checked={customDbFieldRequired}
-                        onChange={(e) => setCustomDbFieldRequired(e.target.checked)}
-                        className="rounded border-border"
-                      />
-                      <Label htmlFor="customDbFieldRequired" className="text-sm">
-                        Required field
-                      </Label>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={addCustomDbField}
-                        className="h-8"
-                      >
-                        Add Field
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowCustomDbFieldForm(false);
-                          setCustomDbFieldName('');
-                          setCustomDbFieldRequired(false);
-                        }}
-                        className="h-8"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              <div className="space-y-3">
-                {availableFields.map((field) => {
-                  const mappedColumn = fieldMappings[field.key];
-                  const isCustom = !['category', 'country', 'state', 'city', 'name', 'address', 'phone', 'email'].includes(field.key);
+              <div>
+                <RequiredLabel>Default Price per Lead (₹)</RequiredLabel>
+                <Input
+                  type="number"
+                  value={newDataset.price}
+                  min="0" 
+                  onKeyDown={(e) => {
                   
-                  return (
-                    <div key={field.key} className="border rounded-lg p-3 bg-background">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Label className="font-medium text-sm">
-                            {field.label}
-                            {field.required && <span className="text-destructive ml-1">*</span>}
-                          </Label>
-                          {isCustom && (
-                            <Badge variant="outline" className="text-xs">Custom</Badge>
-                          )}
-                        </div>
-                        {isCustom && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeCustomField(field.key)}
-                            className="text-destructive hover:text-destructive h-6 w-6 p-0"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                      
-                      <Select
-                        value={mappedColumn || 'none'}
-                        onValueChange={(value) => setFieldMappings(prev => ({ 
-                          ...prev, 
-                          [field.key]: value === 'none' ? '' : value 
-                        }))}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue placeholder="Select file column" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">-- No mapping --</SelectItem>
-                          {fileHeaders.map((header, idx) => (
-                            <SelectItem key={idx} value={header}>
-                              <div className="flex items-center gap-2">
-                                {header}
-                                {Object.values(fieldMappings).includes(header) && 
-                                 fieldMappings[field.key] !== header && (
-                                  <Badge variant="secondary" className="text-xs ml-2">Used</Badge>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      
-                      {mappedColumn && (
-                        <div className="mt-1 flex items-center gap-1 text-xs text-primary">
-                          <CheckCircle className="w-3 h-3" />
-                          Mapped to: {mappedColumn}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    if (e.key === '-' || e.key === '+' || e.key === 'e') {
+                      e.preventDefault();
+                    }
+                  }}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                   
+                    if (value === '' || (parseFloat(value) >= 0 && !isNaN(parseFloat(value)))) {
+                      setNewDataset(p => ({ ...p, price: value }));
+                    }
+                  }}
+                  placeholder="e.g., 0.5"
+                />
               </div>
-            </div>
-          </div>
 
-          {/* Mapping Summary */}
-          <Separator className="my-6" />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary" />
-                <span>{Object.keys(fieldMappings).filter(k => fieldMappings[k]).length} fields mapped</span>
+              <div><RequiredLabel>Description</RequiredLabel><Textarea value={newDataset.description} onChange={(e) => setNewDataset(p => ({ ...p, description: e.target.value }))} placeholder="e.g., List of restaurants in the USA" /></div>
+              <div><Label>Proof of Source (Optional)</Label><Input type="file" onChange={(e) => setNewDataset(p => ({ ...p, proofAttachment: e.target.files ? e.target.files[0] : null }))} className="mt-1 block w-full text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary hover:file:bg-primary/20" /></div>
+            </div>
+          </Card>
+        </div>
+
+        {showMapping && (
+          <Card className="p-6 h-fit sticky top-6">
+            <div className="flex items-center justify-between mb-4"><h2 className="text-xl font-semibold">3. Map Data Fields</h2><Button variant="outline" size="sm">Auto-Map</Button></div>
+            <p className="text-muted-foreground mb-6">Match columns from your file to the database fields.</p>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">{databaseFields.map((field) => (
+              <div key={field.key}>
+                {field.required ? <RequiredLabel>{field.label}</RequiredLabel> : <Label>{field.label}</Label>}
+                <Select value={fieldMappings[field.key] || ''} onValueChange={(value) => setFieldMappings(p => ({ ...p, [field.key]: value }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="-- Select a column --" /></SelectTrigger>
+                  <SelectContent>{fileHeaders.map((h, i) => <SelectItem key={i} value={h}>{h}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                <span>{fileHeaders.length - Object.values(fieldMappings).filter(v => v).length} columns unmapped</span>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Auto-map common fields
-                  const newMappings = { ...fieldMappings };
-                  fileHeaders.forEach(header => {
-                    const lowerHeader = header.toLowerCase();
-                    if (lowerHeader.includes('country') && !newMappings.country) newMappings.country = header;
-                    if (lowerHeader.includes('state') && !newMappings.state) newMappings.state = header;
-                    if (lowerHeader.includes('city') && !newMappings.city) newMappings.city = header;
-                    if (lowerHeader.includes('name') && !newMappings.name) newMappings.name = header;
-                    if (lowerHeader.includes('address') && !newMappings.address) newMappings.address = header;
-                    if (lowerHeader.includes('phone') && !newMappings.phone) newMappings.phone = header;
-                    if (lowerHeader.includes('email') && !newMappings.email) newMappings.email = header;
-                  });
-                  setFieldMappings(newMappings);
-                  toast({
-                    title: "Auto-mapping applied",
-                    description: "Common fields have been automatically mapped based on column names."
-                  });
-                }}
-              >
-                Auto-Map Common Fields
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setFieldMappings({});
-                  toast({
-                    title: "Mappings cleared",
-                    description: "All field mappings have been reset."
-                  });
-                }}
-              >
-                Clear All
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
+            ))}</div>
+          </Card>
+        )}
+      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Upload New Dataset</h2>
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-muted-foreground/25 hover:border-primary/50'
-              }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <Upload className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-            <h3 className="text-base lg:text-lg font-medium text-card-foreground mb-2">
-              Drag & drop files here
-            </h3>
-            <p className="text-muted-foreground mb-3 lg:mb-4 text-sm lg:text-base">
-              Support for CSV and Excel files
-            </p>
-
-            <input
-              type="file"
-              multiple
-              accept=".csv,.xlsx,.xls"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="file-upload"
-            />
-            <Button asChild variant="outline" className="h-9 lg:h-10 text-sm lg:text-base">
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <FileText className="w-4 h-4 mr-2" />
-                Choose Files
-              </label>
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Dataset Information</h2>
-        <div className="space-y-4">
-          <div>
-            <RequiredLabel>Category</RequiredLabel>
-            <Input
-              type="text"
-              value={newDataset.category}
-              onChange={(e) => handleInputChange("category", e.target.value)}
-              placeholder="Hotel"
-            />
-            {errors.category && <p className="text-destructive text-sm">{errors.category}</p>}
-          </div>
-
-          {/* Price (Required) */}
-          <div>
-            <RequiredLabel>Price per Record (₹)</RequiredLabel>
-            <Input
-              type="number"
-              value={newDataset.price}
-              onChange={(e) => handleInputChange("price", e.target.value)}
-              placeholder="0.5"
-            />
-            {errors.price && <p className="text-destructive text-sm">{errors.price}</p>}
-          </div>
-
-          {/* Description (Required) */}
-          <div>
-            <RequiredLabel>Description</RequiredLabel>
-            <Textarea
-              value={newDataset.description}
-              onChange={(e) => handleInputChange("description", e.target.value)}
-              placeholder="Brief description..."
-            />
-            {errors.description && <p className="text-destructive text-sm">{errors.description}</p>}
-          </div>
-
-          {/* Proof (Optional) */}
-          <div>
-            <Label>Proof Attachment (Optional)</Label>
-            <input
-              type="file"
-              onChange={(e) => handleInputChange("proofAttachment", e.target.files?.[0] || null)}
-              className="mt-1 block w-full text-sm file:mr-3 file:py-1 file:px-3
-                file:rounded-md file:border-0 file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-            />
-          </div>
-
-          <Button onClick={handleCreateDataset} className="w-full" disabled={isLoading}>
-           {isLoading ? "Uploading..." : "Create Dataset"}
+      {showMapping && (
+        <div className="flex justify-end pt-4 border-t">
+          <Button size="lg" onClick={handleCreateDataset} disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading ? "Processing File..." : "Validate & Create Dataset"}
           </Button>
         </div>
-      </Card>
-      </div>
+      )}
 
-      <Card className="p-4 lg:p-6">
-        <h2 className="text-lg lg:text-xl font-semibold text-card-foreground mb-4">Uploaded Files</h2>
-
-        {uploadedFiles.length === 0 ? (
-          <div className="text-center py-6 lg:py-8">
-            <FileText className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-            <p className="text-muted-foreground text-sm lg:text-base">No files uploaded yet</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {uploadedFiles.map((file) => (
-              <div key={file.id} className="border border-border rounded-lg p-3 lg:p-4">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <FileText className="w-4 h-4 lg:w-5 lg:h-5 text-primary flex-shrink-0" />
-                      <span className="font-medium text-card-foreground text-sm lg:text-base">{file.name}</span>
-                      {getStatusBadge(file.status)}
-                    </div>
-                    <div className="text-xs lg:text-sm text-muted-foreground flex flex-wrap gap-2 lg:gap-4">
-                      <span>Size: {file.size}</span>
-                      <span>Uploaded: {file.uploadDate}</span>
-                      {file.status === 'completed' && (
-                        <span>Records: {file.records.toLocaleString()}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 lg:gap-2 mt-2 lg:mt-0">
-                    {file.status === 'completed' && (
-                      <>
-                        <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-                          <Eye className="w-3 h-3 lg:w-4 lg:h-4" />
-                          <span className="hidden lg:inline ml-1">View</span>
-                        </Button>
-                        <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-                          <Download className="w-3 h-3 lg:w-4 lg:h-4" />
-                          <span className="hidden lg:inline ml-1">Download</span>
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteFile(file.id)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 lg:h-9 lg:w-auto lg:px-3"
-                    >
-                      <Trash2 className="w-3 h-3 lg:w-4 lg:h-4" />
-                      <span className="hidden lg:inline ml-1">Delete</span>
-                    </Button>
-                  </div>
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">Previously Uploaded Datasets</h2>
+        {isFetchingFiles ? <p className="text-muted-foreground">Loading files...</p> :
+          uploadedFiles.length === 0 ? <p className="text-muted-foreground text-center py-4">No datasets have been uploaded yet.</p> :
+            <div className="space-y-3">{uploadedFiles.map((file) => (
+              <div key={file.source_id} className="border rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{file.source_name}</p>
+                  <p className="text-sm text-muted-foreground">{file.description} - Uploaded on {new Date(file.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="icon"><Eye className="w-4 h-4" /></Button>
+                  <Button variant="outline" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteFile(file.source_id, file.source_name)}><Trash2 className="w-4 h-4" /></Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            ))}</div>
+        }
       </Card>
     </div>
   );
 }
-
-
-
-
-
-
-
-
-// import { useEffect, useState } from "react";
-// import { Card } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
-// import { Textarea } from "@/components/ui/textarea";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// import { Badge } from "@/components/ui/badge";
-// import { Separator } from "@/components/ui/separator";
-// import { Upload, FileText, CheckCircle, X, Download, Eye, Trash2 } from "lucide-react";
-// import { useToast } from "@/hooks/use-toast";
-// import { uploadData } from "@/api/apiHub";
-// import { Country, State, City } from 'country-state-city';
-// import * as XLSX from "xlsx";
-// import {createCategory,createCountry,createCity,createState} from '../../api/apiHub'
-// interface UploadedFile {
-//   id: string;
-//   name: string;
-//   size: string;
-//   uploadDate: string;
-//   status: 'processing' | 'completed' | 'failed';
-//   records: number;
-// }
-
-
-
-// export default function AdminUploads() {
-//   const { toast } = useToast();
-//   const [isDragOver, setIsDragOver] = useState(false);
-//   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([
-//     {
-//       id: '1',
-//       name: 'restaurants_usa.csv',
-//       size: '2.5 MB',
-//       uploadDate: '2024-01-15',
-//       status: 'completed',
-//       records: 15420
-//     },
-//     {
-//       id: '2',
-//       name: 'hotels_uk.xlsx',
-//       size: '1.8 MB',
-//       uploadDate: '2024-01-14',
-//       status: 'processing',
-//       records: 8930
-//     },
-  
-//   ]);
-//   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-//   const [fileHeaders, setFileHeaders] = useState<string[]>([]);
-//   const [fieldMappings, setFieldMappings] = useState<{ [key: string]: string }>({});
-//   const [showMapping, setShowMapping] = useState(false);
-//   const [availableFields, setAvailableFields] = useState([
-//     // { key: 'category', label: 'Category', required: true },
-//     { key: 'country', label: 'Country', required: true },
-//     { key: 'state', label: 'State', required: false },
-//     { key: 'city', label: 'City', required: false },
-    
-//     { key: 'name', label: 'Name', required: false },
-//     { key: 'address', label: 'Address', required: false },
-//     { key: 'phone', label: 'Phone', required: false },
-//     { key: 'email', label: 'Email', required: false },
-//   ]);
- 
-
-//   const [newDataset, setNewDataset] = useState({
-   
-//    category:'',
-//     description: '',
-//     price: '',
-//     proofAttachment: null,
-//   });
-//  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-//   const handleDragOver = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(true);
-//   };
-
-//   const handleDragLeave = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(false);
-//   };
-
-//   const handleDrop = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(false);
-
-//     const files = Array.from(e.dataTransfer.files);
-//     handleFileUpload(files);
-//   };
-
-//   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-//     if (e.target.files && e.target.files[0]) {
-//       const file = e.target.files[0];
-//       setSelectedFile(file);
-//       readFileHeaders(file);
-//       handleFileUpload([file]);
-//     }
-//   };
-
-
-  
-
-// const readFileHeaders = (file: File) => {
-//   const reader = new FileReader();
-
-//   reader.onload = (e) => {
-//     const data = e.target?.result;
-
-//     if (!data) return;
-
-//     if (file.name.endsWith(".csv")) {
-//       // CSV case
-//       const text = data as string;
-//       const lines = text.split("\n");
-//       const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
-//       setFileHeaders(headers);
-//       setShowMapping(true);
-
-//     } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
-//       // Excel case
-//       const workbook = XLSX.read(data, { type: "binary" });
-//       const sheetName = workbook.SheetNames[0]; // first sheet
-//       const sheet = workbook.Sheets[sheetName];
-
-//       // Convert sheet to JSON with header row
-//       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-//       const headers = (jsonData[0] as string[]).map((h) => h.trim());
-
-//       setFileHeaders(headers);
-//       setShowMapping(true);
-//     }
-//   };
-
-//   if (file.name.endsWith(".csv")) {
-//     reader.readAsText(file);
-//   } else {
-//     reader.readAsBinaryString(file); // for excel
-//   }
-// };
-  
-
-
-//   const handleFileUpload = (files: File[]) => {
-//     files.forEach((file) => {
-//       if (file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-//         const newFile: UploadedFile = {
-//           id: Math.random().toString(36).substr(2, 9),
-//           name: file.name,
-//           size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-//           uploadDate: new Date().toISOString().split('T')[0],
-//           status: 'processing',
-//           records: Math.floor(Math.random() * 50000) + 1000
-//         };
-
-
-
-//         setUploadedFiles(prev => [...prev, newFile]);
-
-
-
-//         // Simulate processing
-//         setTimeout(() => {
-//           setUploadedFiles(prev =>
-//             prev.map(f => f.id === newFile.id ? { ...f, status: 'completed' as const } : f)
-//           );
-//         }, 3000);
-
-//         toast({
-//           title: "File uploaded successfully",
-//           description: `${file.name} is being processed.`,
-//         });
-//       } else {
-//         toast({
-//           title: "Invalid file type",
-//           description: "Please upload CSV or Excel files only.",
-//           variant: "destructive",
-//         });
-//       }
-//     });
-//   };
-
-//   const handleDeleteFile = (id: string) => {
-//     setUploadedFiles(prev => prev.filter(f => f.id !== id));
-//     toast({
-//       title: "File deleted",
-//       description: "Dataset has been removed successfully.",
-//     });
-//   };
-
-
-//   const addCustomField = () => {
-//   const fieldName = prompt("Enter field name"); // user se input lo
-//   if (!fieldName) return;
-
-//   const key = fieldName.toLowerCase().replace(/\s+/g, "_"); // spaces ko _ me convert
-//   const newField = {
-//     key,
-//     label: fieldName,
-//     required: false
-//   };
-
-//   setAvailableFields(prev => [...prev, newField]);
-// };
-
-
-// const removeCustomField = (fieldKey: string) => {
-//   setAvailableFields(prev => prev.filter(f => f.key !== fieldKey));
-//   setFieldMappings(prev => {
-//     const newMappings = { ...prev };
-//     delete newMappings[fieldKey];
-//     return newMappings;
-//   });
-// };
-//  const [isLoading, setIsLoading] = useState(false);
-
-
-//   const handleInputChange = (field: string, value: string | File | null) => {
-//     setNewDataset(prev => ({ ...prev, [field]: value }));
-//   };
-
-
-//   const handleCreateDataset = async () => {
-//     if (!selectedFile) {
-//       toast({
-//         title: "No file selected",
-//         description: "Please upload a CSV or Excel file before creating dataset.",
-//         variant: "destructive",
-//       });
-//       return;
-//     }
-
-//     // Check if mapping is complete for required fields
-//     const requiredMappings = ['country','name','address',"phone","email"];
-//     const missingMappings = requiredMappings.filter(field => !fieldMappings[field]);
-    
-//     if (missingMappings.length > 0) {
-//       toast({
-//         title: "Incomplete field mapping",
-//         description: `Please map the following required fields: ${missingMappings.join(', ')}`,
-//         variant: "destructive",
-//       });
-//       return;
-//     }
-
-//      if (!newDataset.description || !newDataset.price) {
-//     toast({
-//       title: "Missing required fields",
-//       description: "Category, Country, Description and Price are required.",
-//       variant: "destructive",
-//     });
-//     return;
-//   }
-
-
-//   const data = new FormData();
-//   data.append("category", newDataset.category); 
- 
- 
-//   data.append("description", newDataset.description); 
-//   data.append("price", newDataset.price);             
-//   data.append("file", selectedFile);
-  
-//   // Add field mappings to the form data
-//   data.append("fieldMappings", JSON.stringify(fieldMappings));
-                 
-//      if (newDataset.proofAttachment) {
-//     data.append("proofAttachment", newDataset.proofAttachment); 
-//   }
-
-//     try {
-//        setIsLoading(true);
-//       const res = await uploadData(data);
-//       toast({
-//         title: "Dataset created",
-//         description: "New dataset has been added to the system.",
-//       });
-//       setNewDataset({
-
-//       category:"",
-      
-//         description: '',
-//         price: '',
-//         proofAttachment:null,
-//       });
-//       setSelectedFile(null);
-//       setFileHeaders([]);
-//       setFieldMappings({});
-//       setShowMapping(false);
-//     } catch (err) {
-//       toast({
-//         title: "Error",
-//         description: "Failed to upload dataset.",
-//         variant: "destructive",
-//       });
-//     }finally {
-//       setIsLoading(false); 
-//     }
-//   };
-
-//    const RequiredLabel = ({ children }: { children: string }) => (
-//     <Label className="font-medium">
-//       {children} <span className="text-red-500">*</span>
-//     </Label>
-//   );
-
-//   const getStatusBadge = (status: string) => {
-//     switch (status) {
-//       case 'completed':
-//         return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
-//       case 'processing':
-//         return <Badge className="bg-yellow-100 text-yellow-800">Processing</Badge>;
-//       case 'failed':
-//         return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
-//       default:
-//         return <Badge variant="secondary">{status}</Badge>;
-//     }
-//   };
-
-//   return (
-//     <div className="space-y-6">
-//       <div>
-//         <h1 className="text-3xl font-bold text-foreground">File Uploads</h1>
-//         <p className="text-muted-foreground">Upload and manage dataset files</p>
-//       </div>
-
-//       {/* Enhanced Field Mapping Section */}
-//       {showMapping && fileHeaders.length > 0 && (
-//         <Card className="p-6">
-//           <h2 className="text-xl font-semibold mb-4">Map File Columns to Database Fields</h2>
-//           <p className="text-muted-foreground mb-6">
-//             Connect your CSV columns to our database fields. Required fields must be mapped before creating the dataset.
-//           </p>
-          
-//           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-//             {/* Left Side - File Columns */}
-//             <div className="space-y-4">
-//               <h3 className="text-lg font-medium flex items-center gap-2">
-//                 <FileText className="w-5 h-5" />
-//                 File Columns ({fileHeaders.length})
-//               </h3>
-//               <div className="border rounded-lg p-4 bg-muted/30">
-//                 <div className="space-y-2">
-//                   {fileHeaders.map((header, idx) => {
-//                     const isMapped = Object.values(fieldMappings).includes(header);
-//                     const isCustomField = availableFields.find(f => 
-//                       f.key === header.toLowerCase().replace(/\s+/g, '_')
-//                     );
-                    
-//                     return (
-//                       <div key={idx} className={`flex items-center justify-between p-2 rounded border ${
-//                         isMapped ? 'bg-green-50 border-green-200' : 'bg-background border-border'
-//                       }`}>
-//                         <div className="flex items-center gap-2">
-//                           <div className={`w-2 h-2 rounded-full ${
-//                             isMapped ? 'bg-green-500' : 'bg-gray-300'
-//                           }`} />
-//                           <span className="text-sm font-medium">{header}</span>
-//                         </div>
-//                         <div className="flex items-center gap-2">
-//                           {isMapped && (
-//                             <Badge variant="secondary" className="text-xs">
-//                               Mapped
-//                             </Badge>
-//                           )}
-//                           {/* {!isMapped && !isCustomField && (
-//                             <Button
-//                               variant="outline"
-//                               size="sm"
-//                               onClick={() => addCustomField(header)}
-//                               className="h-6 text-xs px-2"
-//                             >
-//                               Add Field
-//                             </Button>
-//                           )} */}
-//                         </div>
-//                       </div>
-//                     );
-//                   })}
-//                 </div>
-//               </div>
-//             </div>
-
-//             {/* Right Side - System Fields */}
-//             <div className="space-y-4">
-              
-//               <h3 className="text-lg font-medium flex items-center gap-2">
-//                 <CheckCircle className="w-5 h-5" />
-//                 Database Fields ({availableFields.length})
-//               </h3>
-//               <div className="space-y-3">
-//                 {availableFields.map((field) => {
-//                   const mappedColumn = fieldMappings[field.key];
-//                   const isCustom = !['category', 'country', 'state', 'city', 'name', 'address', 'phone', 'email'].includes(field.key);
-                  
-//                   return (
-                    
-//                     <div key={field.key} className="border rounded-lg p-3 bg-background">
-//                       <div className="flex items-center justify-between mb-2">
-//                         <div className="flex items-center gap-2">
-                             
-//                           <Label className="font-medium text-sm">
-//                             {field.label}
-//                             {field.required && <span className="text-red-500 ml-1">*</span>}
-//                           </Label>
-                       
-
-
-//                           {isCustom && (
-//                             <Badge variant="outline" className="text-xs">Custom</Badge>
-//                           )}
-//                         </div>
-//                         {isCustom && (
-//                           <Button
-//                             variant="ghost"
-//                             size="sm"
-//                             onClick={() => removeCustomField(field.key)}
-//                             className="text-red-600 hover:text-red-700 h-6 w-6 p-0"
-//                           >
-//                             <X className="w-3 h-3" />
-//                           </Button>
-//                         )}
-//                       </div>
-                      
-//                       <Select
-//                         value={mappedColumn || 'none'}
-//                         onValueChange={(value) => setFieldMappings(prev => ({ 
-//                           ...prev, 
-//                           [field.key]: value === 'none' ? '' : value 
-//                         }))}
-//                       >
-//                         <SelectTrigger className="h-8">
-//                           <SelectValue placeholder="Select file column" />
-//                         </SelectTrigger>
-//                         <SelectContent>
-//                           <SelectItem value="none">-- No mapping --</SelectItem>
-//                           {fileHeaders.map((header, idx) => (
-//                             <SelectItem key={idx} value={header}>
-//                               <div className="flex items-center gap-2">
-//                                 {header}
-//                                 {Object.values(fieldMappings).includes(header) && 
-//                                  fieldMappings[field.key] !== header && (
-//                                   <Badge variant="secondary" className="text-xs ml-2">Used</Badge>
-//                                 )}
-//                               </div>
-//                             </SelectItem>
-//                           ))}
-//                         </SelectContent>
-//                       </Select>
-                      
-//                       {mappedColumn && (
-//                         <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
-//                           <CheckCircle className="w-3 h-3" />
-//                           Mapped to: {mappedColumn}
-//                         </div>
-//                       )}
-//                     </div>
-//                   );
-//                 })}
-//               </div>
-//               <div className="flex justify-end mb-3">
-//   <Button variant="outline" size="sm" onClick={addCustomField}>
-//     + Add Custom Field
-//   </Button>
-// </div>
-
-//             </div>
-            
-//           </div>
-
-//           {/* Mapping Summary */}
-//           <Separator className="my-6" />
-//           <div className="flex items-center justify-between">
-//             <div className="flex items-center gap-4 text-sm">
-//               <div className="flex items-center gap-2">
-//                 <div className="w-2 h-2 rounded-full bg-green-500" />
-//                 <span>{Object.keys(fieldMappings).filter(k => fieldMappings[k]).length} fields mapped</span>
-//               </div>
-//               <div className="flex items-center gap-2">
-//                 <div className="w-2 h-2 rounded-full bg-gray-300" />
-//                 <span>{fileHeaders.length - Object.values(fieldMappings).filter(v => v).length} columns unmapped</span>
-//               </div>
-//             </div>
-            
-//             <div className="flex items-center gap-2">
-//               <Button
-//                 variant="outline"
-//                 size="sm"
-//                 onClick={() => {
-//                   // Auto-map common fields
-//                   const newMappings = { ...fieldMappings };
-//                   fileHeaders.forEach(header => {
-//                     const lowerHeader = header.toLowerCase();
-//                     // if (lowerHeader.includes('category') && !newMappings.category) newMappings.category = header;
-//                     if (lowerHeader.includes('country') && !newMappings.country) newMappings.country = header;
-//                     if (lowerHeader.includes('state') && !newMappings.state) newMappings.state = header;
-//                     if (lowerHeader.includes('city') && !newMappings.city) newMappings.city = header;
-                  
-//                     if (lowerHeader.includes('name') && !newMappings.name) newMappings.name = header;
-//                     if (lowerHeader.includes('address') && !newMappings.address) newMappings.address = header;
-//                     if (lowerHeader.includes('phone') && !newMappings.phone) newMappings.phone = header;
-//                     if (lowerHeader.includes('email') && !newMappings.email) newMappings.email = header;
-//                   });
-//                   setFieldMappings(newMappings);
-//                   toast({
-//                     title: "Auto-mapping applied",
-//                     description: "Common fields have been automatically mapped based on column names."
-//                   });
-//                 }}
-//               >
-//                 Auto-Map Common Fields
-//               </Button>
-//               <Button
-//                 variant="outline"
-//                 size="sm"
-//                 onClick={() => {
-//                   setFieldMappings({});
-//                   toast({
-//                     title: "Mappings cleared",
-//                     description: "All field mappings have been reset."
-//                   });
-//                 }}
-//               >
-//                 Clear All
-//               </Button>
-//             </div>
-//           </div>
-//         </Card>
-//       )}
-
-
-      
-
-//       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-//         <Card className="p-6">
-//           <h2 className="text-xl font-semibold mb-4">Upload New Dataset</h2>
-//           <div
-//             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver
-//               ? 'border-primary bg-primary/5'
-//               : 'border-muted-foreground/25 hover:border-primary/50'
-//               }`}
-//             onDragOver={handleDragOver}
-//             onDragLeave={handleDragLeave}
-//             onDrop={handleDrop}
-
-//           >
-//             <Upload className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-//             <h3 className="text-base lg:text-lg font-medium text-card-foreground mb-2">
-//               Drag & drop files here
-//             </h3>
-//             <p className="text-muted-foreground mb-3 lg:mb-4 text-sm lg:text-base">
-//               Support for CSV and Excel files
-//             </p>
-
-//             <input
-//               type="file"
-//               multiple
-//               accept=".csv,.xlsx,.xls"
-//               onChange={handleFileSelect}
-//               className="hidden"
-//               id="file-upload"
-//             />
-//             <Button asChild variant="outline" className="h-9 lg:h-10 text-sm lg:text-base">
-//               <label htmlFor="file-upload" className="cursor-pointer">
-//                 <FileText className="w-4 h-4 mr-2" />
-//                 Choose Files
-//               </label>
-//             </Button>
-//           </div>
-//         </Card>
-
-
-//         <Card className="p-6">
-//         <h2 className="text-xl font-semibold mb-4">Dataset Information</h2>
-//         <div className="space-y-4">
-
-
-//                 <div>
-//             <RequiredLabel>Category</RequiredLabel>
-
-//               <Input
-//               type="text"
-//               value={newDataset.category}
-//               onChange={(e) => handleInputChange("category", e.target.value)}
-//               placeholder="Hotel"
-//             />
-          
-//             {errors.category && <p className="text-red-500 text-sm">{errors.category}</p>}
-//           </div>
-
-
-//           {/* Price (Required) */}
-//           <div>
-//             <RequiredLabel>Price per Record ($)</RequiredLabel>
-//             <Input
-//               type="number"
-//               value={newDataset.price}
-//               onChange={(e) => handleInputChange("price", e.target.value)}
-//               placeholder="0.05"
-//             />
-//             {errors.price && <p className="text-red-500 text-sm">{errors.price}</p>}
-//           </div>
-
-//           {/* Description (Required) */}
-//           <div>
-//             <RequiredLabel>Description</RequiredLabel>
-//             <Textarea
-//               value={newDataset.description}
-//               onChange={(e) => handleInputChange("description", e.target.value)}
-//               placeholder="Brief description..."
-//             />
-//             {errors.description && <p className="text-red-500 text-sm">{errors.description}</p>}
-//           </div>
-
-       
-
-//           {/* Proof (Optional) */}
-//           <div>
-//             <Label>Proof Attachment (Optional)</Label>
-//             <input
-//               type="file"
-//               onChange={(e) => handleInputChange("proofAttachment", e.target.files?.[0] || null)}
-//               className="mt-1 block w-full text-sm file:mr-3 file:py-1 file:px-3
-//                 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-//             />
-//           </div>
-
-//           <Button onClick={handleCreateDataset} className="w-full"  disabled={isLoading}>
-//            {isLoading ? "Uploading..." : "Create Dataset"}
-//             {/* Create Dataset */}
-//           </Button>
-//         </div>
-//       </Card>
-//       </div>
-
-//       <Card className="p-4 lg:p-6">
-//         <h2 className="text-lg lg:text-xl font-semibold text-card-foreground mb-4">Uploaded Files</h2>
-
-//         {uploadedFiles.length === 0 ? (
-//           <div className="text-center py-6 lg:py-8">
-//             <FileText className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-//             <p className="text-muted-foreground text-sm lg:text-base">No files uploaded yet</p>
-//           </div>
-//         ) : (
-//           <div className="space-y-4">
-//             {uploadedFiles.map((file) => (
-//               <div key={file.id} className="border border-border rounded-lg p-3 lg:p-4">
-//                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-//                   <div className="flex-1">
-//                     <div className="flex items-center gap-3 mb-2">
-//                       <FileText className="w-4 h-4 lg:w-5 lg:h-5 text-primary flex-shrink-0" />
-//                       <span className="font-medium text-card-foreground text-sm lg:text-base">{file.name}</span>
-//                       {getStatusBadge(file.status)}
-//                     </div>
-//                     <div className="text-xs lg:text-sm text-muted-foreground flex flex-wrap gap-2 lg:gap-4">
-//                       <span>Size: {file.size}</span>
-//                       <span>Uploaded: {file.uploadDate}</span>
-//                       {file.status === 'completed' && (
-//                         <span>Records: {file.records.toLocaleString()}</span>
-//                       )}
-//                     </div>
-//                   </div>
-
-//                   <div className="flex items-center gap-1 lg:gap-2 mt-2 lg:mt-0">
-//                     {file.status === 'completed' && (
-//                       <>
-//                         <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-//                           <Eye className="w-3 h-3 lg:w-4 lg:h-4" />
-//                           <span className="hidden lg:inline ml-1">View</span>
-//                         </Button>
-//                         <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-//                           <Download className="w-3 h-3 lg:w-4 lg:h-4" />
-//                           <span className="hidden lg:inline ml-1">Download</span>
-//                         </Button>
-//                       </>
-//                     )}
-//                     <Button
-//                       variant="outline"
-//                       size="sm"
-//                       onClick={() => handleDeleteFile(file.id)}
-//                       className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 lg:h-9 lg:w-auto lg:px-3"
-//                     >
-//                       <Trash2 className="w-3 h-3 lg:w-4 lg:h-4" />
-//                       <span className="hidden lg:inline ml-1">Delete</span>
-//                     </Button>
-//                   </div>
-//                 </div>
-//               </div>
-//             ))}
-//           </div>
-//         )}
-//       </Card>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-// import { useEffect, useState } from "react";
-// import { Card } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
-// import { Textarea } from "@/components/ui/textarea";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// import { Badge } from "@/components/ui/badge";
-// import { Separator } from "@/components/ui/separator";
-// import { Upload, FileText, CheckCircle, X, Download, Eye, Trash2 } from "lucide-react";
-// import { useToast } from "@/hooks/use-toast";
-// import { uploadData } from "@/api/apiHub";
-// import { Country, State, City } from 'country-state-city';
-// import * as XLSX from "xlsx";
-// import {createCategory,createCountry,createCity,createState} from '../../api/apiHub'
-// interface UploadedFile {
-//   id: string;
-//   name: string;
-//   size: string;
-//   uploadDate: string;
-//   status: 'processing' | 'completed' | 'failed';
-//   records: number;
-// }
-
-
-
-// export default function AdminUploads() {
-//   const { toast } = useToast();
-//   const [isDragOver, setIsDragOver] = useState(false);
-//   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([
-//     {
-//       id: '1',
-//       name: 'restaurants_usa.csv',
-//       size: '2.5 MB',
-//       uploadDate: '2024-01-15',
-//       status: 'completed',
-//       records: 15420
-//     },
-//     {
-//       id: '2',
-//       name: 'hotels_uk.xlsx',
-//       size: '1.8 MB',
-//       uploadDate: '2024-01-14',
-//       status: 'processing',
-//       records: 8930
-//     },
-  
-//   ]);
-//   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-//   const [fileHeaders, setFileHeaders] = useState<string[]>([]);
-//   const [fieldMappings, setFieldMappings] = useState<{ [key: string]: string }>({});
-//   const [showMapping, setShowMapping] = useState(false);
-//   const [availableFields, setAvailableFields] = useState([
-//     { key: 'category', label: 'Category', required: true },
-//     { key: 'country', label: 'Country', required: true },
-//     { key: 'state', label: 'State', required: false },
-//     { key: 'city', label: 'City', required: false },
-    
-//     { key: 'name', label: 'Name', required: false },
-//     { key: 'address', label: 'Address', required: false },
-//     { key: 'phone', label: 'Phone', required: false },
-//     { key: 'email', label: 'Email', required: false },
-//   ]);
- 
-
-//   const [newDataset, setNewDataset] = useState({
-   
-   
-//     description: '',
-//     price: '',
-//     proofAttachment: null,
-//   });
-//  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-//   const handleDragOver = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(true);
-//   };
-
-//   const handleDragLeave = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(false);
-//   };
-
-//   const handleDrop = (e: React.DragEvent) => {
-//     e.preventDefault();
-//     setIsDragOver(false);
-
-//     const files = Array.from(e.dataTransfer.files);
-//     handleFileUpload(files);
-//   };
-
-//   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-//     if (e.target.files && e.target.files[0]) {
-//       const file = e.target.files[0];
-//       setSelectedFile(file);
-//       readFileHeaders(file);
-//       handleFileUpload([file]);
-//     }
-//   };
-
-
-  
-
-// const readFileHeaders = (file: File) => {
-//   const reader = new FileReader();
-
-//   reader.onload = (e) => {
-//     const data = e.target?.result;
-
-//     if (!data) return;
-
-//     if (file.name.endsWith(".csv")) {
-//       // CSV case
-//       const text = data as string;
-//       const lines = text.split("\n");
-//       const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
-//       setFileHeaders(headers);
-//       setShowMapping(true);
-
-//     } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
-//       // Excel case
-//       const workbook = XLSX.read(data, { type: "binary" });
-//       const sheetName = workbook.SheetNames[0]; // first sheet
-//       const sheet = workbook.Sheets[sheetName];
-
-//       // Convert sheet to JSON with header row
-//       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-//       const headers = (jsonData[0] as string[]).map((h) => h.trim());
-
-//       setFileHeaders(headers);
-//       setShowMapping(true);
-//     }
-//   };
-
-//   if (file.name.endsWith(".csv")) {
-//     reader.readAsText(file);
-//   } else {
-//     reader.readAsBinaryString(file); // for excel
-//   }
-// };
-  
-
-
-//   const handleFileUpload = (files: File[]) => {
-//     files.forEach((file) => {
-//       if (file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-//         const newFile: UploadedFile = {
-//           id: Math.random().toString(36).substr(2, 9),
-//           name: file.name,
-//           size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-//           uploadDate: new Date().toISOString().split('T')[0],
-//           status: 'processing',
-//           records: Math.floor(Math.random() * 50000) + 1000
-//         };
-
-
-
-//         setUploadedFiles(prev => [...prev, newFile]);
-
-
-
-//         // Simulate processing
-//         setTimeout(() => {
-//           setUploadedFiles(prev =>
-//             prev.map(f => f.id === newFile.id ? { ...f, status: 'completed' as const } : f)
-//           );
-//         }, 3000);
-
-//         toast({
-//           title: "File uploaded successfully",
-//           description: `${file.name} is being processed.`,
-//         });
-//       } else {
-//         toast({
-//           title: "Invalid file type",
-//           description: "Please upload CSV or Excel files only.",
-//           variant: "destructive",
-//         });
-//       }
-//     });
-//   };
-
-//   const handleDeleteFile = (id: string) => {
-//     setUploadedFiles(prev => prev.filter(f => f.id !== id));
-//     toast({
-//       title: "File deleted",
-//       description: "Dataset has been removed successfully.",
-//     });
-//   };
-
-
-//   const addCustomField = () => {
-//   const fieldName = prompt("Enter field name"); // user se input lo
-//   if (!fieldName) return;
-
-//   const key = fieldName.toLowerCase().replace(/\s+/g, "_"); // spaces ko _ me convert
-//   const newField = {
-//     key,
-//     label: fieldName,
-//     required: false
-//   };
-
-//   setAvailableFields(prev => [...prev, newField]);
-// };
-
-
-// const removeCustomField = (fieldKey: string) => {
-//   setAvailableFields(prev => prev.filter(f => f.key !== fieldKey));
-//   setFieldMappings(prev => {
-//     const newMappings = { ...prev };
-//     delete newMappings[fieldKey];
-//     return newMappings;
-//   });
-// };
-//  const [isLoading, setIsLoading] = useState(false);
-
-
-//   const handleInputChange = (field: string, value: string | File | null) => {
-//     setNewDataset(prev => ({ ...prev, [field]: value }));
-//   };
-
-
-//   const handleCreateDataset = async () => {
-//     if (!selectedFile) {
-//       toast({
-//         title: "No file selected",
-//         description: "Please upload a CSV or Excel file before creating dataset.",
-//         variant: "destructive",
-//       });
-//       return;
-//     }
-
-//     // Check if mapping is complete for required fields
-//     const requiredMappings = ['category', 'country','name','address',"phone","email"];
-//     const missingMappings = requiredMappings.filter(field => !fieldMappings[field]);
-    
-//     if (missingMappings.length > 0) {
-//       toast({
-//         title: "Incomplete field mapping",
-//         description: `Please map the following required fields: ${missingMappings.join(', ')}`,
-//         variant: "destructive",
-//       });
-//       return;
-//     }
-
-//      if (!newDataset.description || !newDataset.price) {
-//     toast({
-//       title: "Missing required fields",
-//       description: "Category, Country, Description and Price are required.",
-//       variant: "destructive",
-//     });
-//     return;
-//   }
-
-
-//   const data = new FormData();
- 
- 
-//   data.append("description", newDataset.description); 
-//   data.append("price", newDataset.price);             
-//   data.append("file", selectedFile);
-  
-//   // Add field mappings to the form data
-//   data.append("fieldMappings", JSON.stringify(fieldMappings));
-                 
-//      if (newDataset.proofAttachment) {
-//     data.append("proofAttachment", newDataset.proofAttachment); 
-//   }
-
-//     try {
-//        setIsLoading(true);
-//       const res = await uploadData(data);
-//       toast({
-//         title: "Dataset created",
-//         description: "New dataset has been added to the system.",
-//       });
-//       setNewDataset({
-      
-      
-//         description: '',
-//         price: '',
-//         proofAttachment:null,
-//       });
-//       setSelectedFile(null);
-//       setFileHeaders([]);
-//       setFieldMappings({});
-//       setShowMapping(false);
-//     } catch (err) {
-//       toast({
-//         title: "Error",
-//         description: "Failed to upload dataset.",
-//         variant: "destructive",
-//       });
-//     }finally {
-//       setIsLoading(false); 
-//     }
-//   };
-
-//    const RequiredLabel = ({ children }: { children: string }) => (
-//     <Label className="font-medium">
-//       {children} <span className="text-red-500">*</span>
-//     </Label>
-//   );
-
-//   const getStatusBadge = (status: string) => {
-//     switch (status) {
-//       case 'completed':
-//         return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
-//       case 'processing':
-//         return <Badge className="bg-yellow-100 text-yellow-800">Processing</Badge>;
-//       case 'failed':
-//         return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
-//       default:
-//         return <Badge variant="secondary">{status}</Badge>;
-//     }
-//   };
-
-//   return (
-//     <div className="space-y-6">
-//       <div>
-//         <h1 className="text-3xl font-bold text-foreground">File Uploads</h1>
-//         <p className="text-muted-foreground">Upload and manage dataset files</p>
-//       </div>
-
-//       {/* Enhanced Field Mapping Section */}
-//       {showMapping && fileHeaders.length > 0 && (
-//         <Card className="p-6">
-//           <h2 className="text-xl font-semibold mb-4">Map File Columns to Database Fields</h2>
-//           <p className="text-muted-foreground mb-6">
-//             Connect your CSV columns to our database fields. Required fields must be mapped before creating the dataset.
-//           </p>
-          
-//           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-//             {/* Left Side - File Columns */}
-//             <div className="space-y-4">
-//               <h3 className="text-lg font-medium flex items-center gap-2">
-//                 <FileText className="w-5 h-5" />
-//                 File Columns ({fileHeaders.length})
-//               </h3>
-//               <div className="border rounded-lg p-4 bg-muted/30">
-//                 <div className="space-y-2">
-//                   {fileHeaders.map((header, idx) => {
-//                     const isMapped = Object.values(fieldMappings).includes(header);
-//                     const isCustomField = availableFields.find(f => 
-//                       f.key === header.toLowerCase().replace(/\s+/g, '_')
-//                     );
-                    
-//                     return (
-//                       <div key={idx} className={`flex items-center justify-between p-2 rounded border ${
-//                         isMapped ? 'bg-green-50 border-green-200' : 'bg-background border-border'
-//                       }`}>
-//                         <div className="flex items-center gap-2">
-//                           <div className={`w-2 h-2 rounded-full ${
-//                             isMapped ? 'bg-green-500' : 'bg-gray-300'
-//                           }`} />
-//                           <span className="text-sm font-medium">{header}</span>
-//                         </div>
-//                         <div className="flex items-center gap-2">
-//                           {isMapped && (
-//                             <Badge variant="secondary" className="text-xs">
-//                               Mapped
-//                             </Badge>
-//                           )}
-//                           {/* {!isMapped && !isCustomField && (
-//                             <Button
-//                               variant="outline"
-//                               size="sm"
-//                               onClick={() => addCustomField(header)}
-//                               className="h-6 text-xs px-2"
-//                             >
-//                               Add Field
-//                             </Button>
-//                           )} */}
-//                         </div>
-//                       </div>
-//                     );
-//                   })}
-//                 </div>
-//               </div>
-//             </div>
-
-//             {/* Right Side - System Fields */}
-//             <div className="space-y-4">
-              
-//               <h3 className="text-lg font-medium flex items-center gap-2">
-//                 <CheckCircle className="w-5 h-5" />
-//                 Database Fields ({availableFields.length})
-//               </h3>
-//               <div className="space-y-3">
-//                 {availableFields.map((field) => {
-//                   const mappedColumn = fieldMappings[field.key];
-//                   const isCustom = !['category', 'country', 'state', 'city', 'name', 'address', 'phone', 'email'].includes(field.key);
-                  
-//                   return (
-//                     <div key={field.key} className="border rounded-lg p-3 bg-background">
-//                       <div className="flex items-center justify-between mb-2">
-//                         <div className="flex items-center gap-2">
-//                           <Label className="font-medium text-sm">
-//                             {field.label}
-//                             {field.required && <span className="text-red-500 ml-1">*</span>}
-//                           </Label>
-
-
-//                           {isCustom && (
-//                             <Badge variant="outline" className="text-xs">Custom</Badge>
-//                           )}
-//                         </div>
-//                         {isCustom && (
-//                           <Button
-//                             variant="ghost"
-//                             size="sm"
-//                             onClick={() => removeCustomField(field.key)}
-//                             className="text-red-600 hover:text-red-700 h-6 w-6 p-0"
-//                           >
-//                             <X className="w-3 h-3" />
-//                           </Button>
-//                         )}
-//                       </div>
-                      
-//                       <Select
-//                         value={mappedColumn || 'none'}
-//                         onValueChange={(value) => setFieldMappings(prev => ({ 
-//                           ...prev, 
-//                           [field.key]: value === 'none' ? '' : value 
-//                         }))}
-//                       >
-//                         <SelectTrigger className="h-8">
-//                           <SelectValue placeholder="Select file column" />
-//                         </SelectTrigger>
-//                         <SelectContent>
-//                           <SelectItem value="none">-- No mapping --</SelectItem>
-//                           {fileHeaders.map((header, idx) => (
-//                             <SelectItem key={idx} value={header}>
-//                               <div className="flex items-center gap-2">
-//                                 {header}
-//                                 {Object.values(fieldMappings).includes(header) && 
-//                                  fieldMappings[field.key] !== header && (
-//                                   <Badge variant="secondary" className="text-xs ml-2">Used</Badge>
-//                                 )}
-//                               </div>
-//                             </SelectItem>
-//                           ))}
-//                         </SelectContent>
-//                       </Select>
-                      
-//                       {mappedColumn && (
-//                         <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
-//                           <CheckCircle className="w-3 h-3" />
-//                           Mapped to: {mappedColumn}
-//                         </div>
-//                       )}
-//                     </div>
-//                   );
-//                 })}
-//               </div>
-//               <div className="flex justify-end mb-3">
-//   <Button variant="outline" size="sm" onClick={addCustomField}>
-//     + Add Custom Field
-//   </Button>
-// </div>
-
-//             </div>
-            
-//           </div>
-
-//           {/* Mapping Summary */}
-//           <Separator className="my-6" />
-//           <div className="flex items-center justify-between">
-//             <div className="flex items-center gap-4 text-sm">
-//               <div className="flex items-center gap-2">
-//                 <div className="w-2 h-2 rounded-full bg-green-500" />
-//                 <span>{Object.keys(fieldMappings).filter(k => fieldMappings[k]).length} fields mapped</span>
-//               </div>
-//               <div className="flex items-center gap-2">
-//                 <div className="w-2 h-2 rounded-full bg-gray-300" />
-//                 <span>{fileHeaders.length - Object.values(fieldMappings).filter(v => v).length} columns unmapped</span>
-//               </div>
-//             </div>
-            
-//             <div className="flex items-center gap-2">
-//               <Button
-//                 variant="outline"
-//                 size="sm"
-//                 onClick={() => {
-//                   // Auto-map common fields
-//                   const newMappings = { ...fieldMappings };
-//                   fileHeaders.forEach(header => {
-//                     const lowerHeader = header.toLowerCase();
-//                     if (lowerHeader.includes('category') && !newMappings.category) newMappings.category = header;
-//                     if (lowerHeader.includes('country') && !newMappings.country) newMappings.country = header;
-//                     if (lowerHeader.includes('state') && !newMappings.state) newMappings.state = header;
-//                     if (lowerHeader.includes('city') && !newMappings.city) newMappings.city = header;
-                  
-//                     if (lowerHeader.includes('name') && !newMappings.name) newMappings.name = header;
-//                     if (lowerHeader.includes('address') && !newMappings.address) newMappings.address = header;
-//                     if (lowerHeader.includes('phone') && !newMappings.phone) newMappings.phone = header;
-//                     if (lowerHeader.includes('email') && !newMappings.email) newMappings.email = header;
-//                   });
-//                   setFieldMappings(newMappings);
-//                   toast({
-//                     title: "Auto-mapping applied",
-//                     description: "Common fields have been automatically mapped based on column names."
-//                   });
-//                 }}
-//               >
-//                 Auto-Map Common Fields
-//               </Button>
-//               <Button
-//                 variant="outline"
-//                 size="sm"
-//                 onClick={() => {
-//                   setFieldMappings({});
-//                   toast({
-//                     title: "Mappings cleared",
-//                     description: "All field mappings have been reset."
-//                   });
-//                 }}
-//               >
-//                 Clear All
-//               </Button>
-//             </div>
-//           </div>
-//         </Card>
-//       )}
-
-//       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-//         <Card className="p-6">
-//           <h2 className="text-xl font-semibold mb-4">Upload New Dataset</h2>
-//           <div
-//             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver
-//               ? 'border-primary bg-primary/5'
-//               : 'border-muted-foreground/25 hover:border-primary/50'
-//               }`}
-//             onDragOver={handleDragOver}
-//             onDragLeave={handleDragLeave}
-//             onDrop={handleDrop}
-
-//           >
-//             <Upload className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-//             <h3 className="text-base lg:text-lg font-medium text-card-foreground mb-2">
-//               Drag & drop files here
-//             </h3>
-//             <p className="text-muted-foreground mb-3 lg:mb-4 text-sm lg:text-base">
-//               Support for CSV and Excel files
-//             </p>
-
-//             <input
-//               type="file"
-//               multiple
-//               accept=".csv,.xlsx,.xls"
-//               onChange={handleFileSelect}
-//               className="hidden"
-//               id="file-upload"
-//             />
-//             <Button asChild variant="outline" className="h-9 lg:h-10 text-sm lg:text-base">
-//               <label htmlFor="file-upload" className="cursor-pointer">
-//                 <FileText className="w-4 h-4 mr-2" />
-//                 Choose Files
-//               </label>
-//             </Button>
-//           </div>
-//         </Card>
-
-
-//         <Card className="p-6">
-//         <h2 className="text-xl font-semibold mb-4">Dataset Information</h2>
-//         <div className="space-y-4">
-
-// {/*        
-//            <div className="grid grid-cols-2 gap-4">
-
-
-//           <div>
-//             <RequiredLabel>Category</RequiredLabel>
-//             <Select value={newDataset.category} onValueChange={(val) => handleInputChange("category", val)}>
-//               <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-//               <SelectContent>
-//                    <SelectItem value="civil-engineer">Civil Engineer </SelectItem>
-//                 <SelectItem value="restaurants">Restaurants</SelectItem>
-//                 <SelectItem value="hotels">Hotels</SelectItem>
-//                 <SelectItem value="retail-stores">Retail Stores</SelectItem>
-//                 <SelectItem value="healthcare">Healthcare</SelectItem>
-//                 <SelectItem value="bus-stops">Transportation</SelectItem>
-//               </SelectContent>
-//             </Select>
-//             {errors.category && <p className="text-red-500 text-sm">{errors.category}</p>}
-//           </div>
-
-
-//           <div>
-//             <RequiredLabel>Country</RequiredLabel>
-//             <Select value={newDataset.country} onValueChange={handleCountryChange}>
-//               <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
-//               <SelectContent>
-//                {countries.map((country) => (
-//                       <SelectItem key={country.isoCode} value={country.isoCode}>
-//                         {country.name}
-//                       </SelectItem>
-//                     ))}
-//               </SelectContent>
-//             </Select>
-//             {errors.country && <p className="text-red-500 text-sm">{errors.country}</p>}
-//           </div>
-//          </div>
-       
-//           <div className="grid grid-cols-2 gap-4">
-//             <div>
-//               <Label>State (Optional)</Label>
-             
-//                <Select
-//                   value={newDataset.state}
-//                   onValueChange={handleStateChange}
-//                   disabled={!newDataset.country}
-//                 >
-//                   <SelectTrigger>
-//                     <SelectValue placeholder="Select state" />
-//                   </SelectTrigger>
-//                   <SelectContent>
-//                     {states.map((state) => (
-//                       <SelectItem key={state.isoCode} value={state.isoCode}>
-//                         {state.name}
-//                       </SelectItem>
-//                     ))}
-//                   </SelectContent>
-//                 </Select>
-//             </div>
-//             <div>
-//               <Label>City (Optional)</Label>
-              
-//               <Select
-//                 value={newDataset.city}
-//                   onValueChange={handleCityChange}
-//                   disabled={!newDataset.state}
-//                 >
-//                   <SelectTrigger>
-//                     <SelectValue placeholder="Select city" />
-//                   </SelectTrigger>
-//                   <SelectContent>
-//                     {cities.map((city) => (
-//                       <SelectItem key={city.name} value={city.name}>
-//                         {city.name}
-//                       </SelectItem>
-//                     ))}
-//                   </SelectContent>
-//                 </Select>
-//             </div>
-//           </div> */}
-
-//           {/* Price (Required) */}
-//           <div>
-//             <RequiredLabel>Price per Record ($)</RequiredLabel>
-//             <Input
-//               type="number"
-//               value={newDataset.price}
-//               onChange={(e) => handleInputChange("price", e.target.value)}
-//               placeholder="0.05"
-//             />
-//             {errors.price && <p className="text-red-500 text-sm">{errors.price}</p>}
-//           </div>
-
-//           {/* Description (Required) */}
-//           <div>
-//             <RequiredLabel>Description</RequiredLabel>
-//             <Textarea
-//               value={newDataset.description}
-//               onChange={(e) => handleInputChange("description", e.target.value)}
-//               placeholder="Brief description..."
-//             />
-//             {errors.description && <p className="text-red-500 text-sm">{errors.description}</p>}
-//           </div>
-
-       
-
-//           {/* Proof (Optional) */}
-//           <div>
-//             <Label>Proof Attachment (Optional)</Label>
-//             <input
-//               type="file"
-//               onChange={(e) => handleInputChange("proofAttachment", e.target.files?.[0] || null)}
-//               className="mt-1 block w-full text-sm file:mr-3 file:py-1 file:px-3
-//                 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-//             />
-//           </div>
-
-//           <Button onClick={handleCreateDataset} className="w-full"  disabled={isLoading}>
-//            {isLoading ? "Uploading..." : "Create Dataset"}
-//             {/* Create Dataset */}
-//           </Button>
-//         </div>
-//       </Card>
-//       </div>
-
-//       <Card className="p-4 lg:p-6">
-//         <h2 className="text-lg lg:text-xl font-semibold text-card-foreground mb-4">Uploaded Files</h2>
-
-//         {uploadedFiles.length === 0 ? (
-//           <div className="text-center py-6 lg:py-8">
-//             <FileText className="w-8 h-8 lg:w-12 lg:h-12 mx-auto mb-3 lg:mb-4 text-muted-foreground" />
-//             <p className="text-muted-foreground text-sm lg:text-base">No files uploaded yet</p>
-//           </div>
-//         ) : (
-//           <div className="space-y-4">
-//             {uploadedFiles.map((file) => (
-//               <div key={file.id} className="border border-border rounded-lg p-3 lg:p-4">
-//                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-//                   <div className="flex-1">
-//                     <div className="flex items-center gap-3 mb-2">
-//                       <FileText className="w-4 h-4 lg:w-5 lg:h-5 text-primary flex-shrink-0" />
-//                       <span className="font-medium text-card-foreground text-sm lg:text-base">{file.name}</span>
-//                       {getStatusBadge(file.status)}
-//                     </div>
-//                     <div className="text-xs lg:text-sm text-muted-foreground flex flex-wrap gap-2 lg:gap-4">
-//                       <span>Size: {file.size}</span>
-//                       <span>Uploaded: {file.uploadDate}</span>
-//                       {file.status === 'completed' && (
-//                         <span>Records: {file.records.toLocaleString()}</span>
-//                       )}
-//                     </div>
-//                   </div>
-
-//                   <div className="flex items-center gap-1 lg:gap-2 mt-2 lg:mt-0">
-//                     {file.status === 'completed' && (
-//                       <>
-//                         <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-//                           <Eye className="w-3 h-3 lg:w-4 lg:h-4" />
-//                           <span className="hidden lg:inline ml-1">View</span>
-//                         </Button>
-//                         <Button variant="outline" size="sm" className="h-8 w-8 lg:h-9 lg:w-auto lg:px-3">
-//                           <Download className="w-3 h-3 lg:w-4 lg:h-4" />
-//                           <span className="hidden lg:inline ml-1">Download</span>
-//                         </Button>
-//                       </>
-//                     )}
-//                     <Button
-//                       variant="outline"
-//                       size="sm"
-//                       onClick={() => handleDeleteFile(file.id)}
-//                       className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 lg:h-9 lg:w-auto lg:px-3"
-//                     >
-//                       <Trash2 className="w-3 h-3 lg:w-4 lg:h-4" />
-//                       <span className="hidden lg:inline ml-1">Delete</span>
-//                     </Button>
-//                   </div>
-//                 </div>
-//               </div>
-//             ))}
-//           </div>
-//         )}
-//       </Card>
-//     </div>
-//   );
-// }
-
-
-
-

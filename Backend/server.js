@@ -1,6 +1,9 @@
+
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import cors from 'cors';
-import pool from './src/config/db.js';
+
 import datasetRoutes from './src/routes/admin/manageDataRoutes.js';
 
 const app = express();

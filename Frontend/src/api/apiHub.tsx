@@ -74,7 +74,16 @@ export const createCity = async (city_name, state_id) => {
 
 
 
+export const getDatasetSources = async () => {
+  const res = await api.get("/datasets/sources");
+  return res.data;
+};
 
+
+export const deleteDatasetSource = async (id: number) => {
+  const res = await api.delete(`/datasets/sources/${id}`);
+  return res.data;
+};
 
 
 // export const getDatasetsSummery = async () => {
