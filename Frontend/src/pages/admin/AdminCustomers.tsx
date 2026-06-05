@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,54 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, Filter, MoreHorizontal, Download, Calendar } from "lucide-react";
-
-const customers = [
-  {
-    id: "CUST001",
-    name: "TechCorp Solutions",
-    email: "admin@techcorp.com",
-    totalOrders: 24,
-    totalSpent: 12500,
-    status: "active",
-    joinDate: "2024-01-15",
-    lastOrder: "2024-03-10"
-  },
-  {
-    id: "CUST002", 
-    name: "DataAnalytics Inc",
-    email: "purchase@dataanalytics.com",
-    totalOrders: 18,
-    totalSpent: 8900,
-    status: "active",
-    joinDate: "2024-02-20",
-    lastOrder: "2024-03-08"
-  },
-  {
-    id: "CUST003",
-    name: "AI Research Lab",
-    email: "contact@airesearch.org",
-    totalOrders: 31,
-    totalSpent: 18750,
-    status: "premium",
-    joinDate: "2023-11-10",
-    lastOrder: "2024-03-12"
-  },
-  {
-    id: "CUST004",
-    name: "ML Solutions",
-    email: "info@mlsolutions.com", 
-    totalOrders: 7,
-    totalSpent: 3200,
-    status: "inactive",
-    joinDate: "2024-01-05",
-    lastOrder: "2024-02-15"
-  }
-];
+import { Search, MoreHorizontal, Download, Calendar } from "lucide-react";
+import { getCustomers } from "@/api/apiHub";
 
 export default function AdminCustomers() {
+  type CustomerRecord = Record<string, unknown>;
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all-status");
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+
+  useEffect(() => {
+    const loadCustomers = async () => {
+      const data = await getCustomers();
+      setCustomers(data.customers || []);
+    };
+
+    loadCustomers();
+  }, []);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -69,9 +39,9 @@ export default function AdminCustomers() {
   };
 
   const filteredCustomers = customers.filter((customer) => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(customer.customer_id).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all-status" || customer.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -87,8 +57,7 @@ export default function AdminCustomers() {
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Customer Management</h1>
-          <p className="text-muted-foreground">Manage your B2B customers and their accounts</p>
+          <h1 className="text-2xl font-bold">Customer Management</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm">
@@ -188,19 +157,19 @@ export default function AdminCustomers() {
               </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id}>
+                  <TableRow key={customer.customer_id}>
                     <TableCell>
                       <div>
                         <div className="font-medium">{customer.name}</div>
-                        <div className="text-sm text-muted-foreground">{customer.id}</div>
+                        <div className="text-sm text-muted-foreground">CUST-{String(customer.customer_id).padStart(3, "0")}</div>
                       </div>
                     </TableCell>
                     <TableCell>{customer.email}</TableCell>
-                    <TableCell>{customer.totalOrders}</TableCell>
-                    <TableCell>${customer.totalSpent.toLocaleString()}</TableCell>
+                    <TableCell>{customer.total_orders}</TableCell>
+                    <TableCell>₹{Number(customer.total_spent || 0).toLocaleString()}</TableCell>
                     <TableCell>{getStatusBadge(customer.status)}</TableCell>
-                    <TableCell>{customer.joinDate}</TableCell>
-                    <TableCell>{customer.lastOrder}</TableCell>
+                    <TableCell>{String(customer.created_at).slice(0, 10)}</TableCell>
+                    <TableCell>{customer.last_order ? String(customer.last_order).slice(0, 10) : "No orders yet"}</TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

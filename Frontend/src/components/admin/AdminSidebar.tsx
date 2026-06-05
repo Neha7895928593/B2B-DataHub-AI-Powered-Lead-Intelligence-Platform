@@ -33,6 +33,7 @@ const mainItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { title: "Dataset Management", url: "/admin/dashboard/datasets", icon: Database },
   { title: "Orders", url: "/admin/dashboard/orders", icon: ShoppingCart },
+  { title: "Transactions", url: "/admin/dashboard/transactions", icon: CreditCard },
   { title: "Customers", url: "/admin/dashboard/customers", icon: Users },
 ];
 

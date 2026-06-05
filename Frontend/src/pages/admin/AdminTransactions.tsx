@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,86 +19,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, Filter, Download, Calendar, DollarSign, TrendingUp, ArrowUpDown } from "lucide-react";
-
-const transactions = [
-  {
-    id: "TXN-001",
-    orderId: "ORD-001",
-    customer: "John Doe",
-    amount: "$299.00",
-    type: "sale",
-    status: "completed",
-    paymentMethod: "Credit Card",
-    gateway: "Stripe",
-    date: "2024-01-15 14:30",
-    fee: "$8.97",
-    net: "$290.03",
-  },
-  {
-    id: "TXN-002",
-    orderId: "ORD-002",
-    customer: "Jane Smith",
-    amount: "$199.00",
-    type: "sale",
-    status: "pending",
-    paymentMethod: "PayPal",
-    gateway: "PayPal",
-    date: "2024-01-15 12:15",
-    fee: "$5.97",
-    net: "$193.03",
-  },
-  {
-    id: "TXN-003",
-    orderId: "ORD-003",
-    customer: "Mike Johnson",
-    amount: "$499.00",
-    type: "sale",
-    status: "completed",
-    paymentMethod: "Credit Card",
-    gateway: "Stripe",
-    date: "2024-01-14 09:45",
-    fee: "$14.97",
-    net: "$484.03",
-  },
-  {
-    id: "TXN-004",
-    orderId: "ORD-001",
-    customer: "John Doe",
-    amount: "$50.00",
-    type: "refund",
-    status: "completed",
-    paymentMethod: "Credit Card",
-    gateway: "Stripe",
-    date: "2024-01-14 16:20",
-    fee: "-$1.50",
-    net: "-$48.50",
-  },
-  {
-    id: "TXN-005",
-    orderId: "ORD-004",
-    customer: "Sarah Wilson",
-    amount: "$399.00",
-    type: "sale",
-    status: "failed",
-    paymentMethod: "Bank Transfer",
-    gateway: "Manual",
-    date: "2024-01-13 11:30",
-    fee: "$0.00",
-    net: "$0.00",
-  },
-];
+import { getTransactions } from "@/api/apiHub";
 
 export default function AdminTransactions() {
+  type TransactionRecord = Record<string, unknown>;
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+
+  useEffect(() => {
+    const loadTransactions = async () => {
+      const data = await getTransactions();
+      setTransactions(data.transactions || []);
+    };
+
+    loadTransactions();
+  }, []);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
         return <Badge className="bg-success/10 text-success">Completed</Badge>;
+      case "processing":
+        return <Badge className="bg-warning/10 text-warning">Processing</Badge>;
       case "pending":
-        return <Badge className="bg-warning/10 text-warning">Pending</Badge>;
+        return <Badge className="bg-muted text-muted-foreground">Pending</Badge>;
       case "failed":
         return <Badge className="bg-destructive/10 text-destructive">Failed</Badge>;
       default:
@@ -117,32 +64,37 @@ export default function AdminTransactions() {
     }
   };
 
-  const filteredTransactions = transactions.filter((transaction) => {
-    const matchesSearch = 
-      transaction.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.orderId.toLowerCase().includes(searchTerm.toLowerCase());
-    
+  const filteredTransactions = useMemo(() => transactions.filter((transaction) => {
+    const matchesSearch =
+      transaction.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(transaction.transaction_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(transaction.order_id).toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesStatus = statusFilter === "all" || transaction.status === statusFilter;
     const matchesType = typeFilter === "all" || transaction.type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
 
-  const stats = {
-    totalRevenue: "$1,247.03",
-    totalTransactions: transactions.length,
-    successRate: "85%",
-    totalFees: "$28.41",
-  };
+    return matchesSearch && matchesStatus && matchesType;
+  }), [transactions, searchTerm, statusFilter, typeFilter]);
+
+  const stats = useMemo(() => {
+    const totalRevenue = transactions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const totalFees = transactions.reduce((sum, item) => sum + Number(item.fee || 0), 0);
+    const completed = transactions.filter((item) => item.status === "completed").length;
+
+    return {
+      totalRevenue,
+      totalTransactions: transactions.length,
+      successRate: transactions.length ? Number(((completed / transactions.length) * 100).toFixed(1)) : 0,
+      totalFees,
+    };
+  }, [transactions]);
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Transactions</h1>
-          <p className="text-muted-foreground">Monitor all payment transactions and financial data</p>
+          <p className="text-muted-foreground">Monitor payment records and fee performance pulled from PostgreSQL</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">
@@ -156,13 +108,12 @@ export default function AdminTransactions() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-foreground">{stats.totalRevenue}</div>
+                <div className="text-2xl font-bold text-foreground">₹{stats.totalRevenue.toLocaleString()}</div>
                 <p className="text-sm text-muted-foreground">Total Revenue</p>
               </div>
               <DollarSign className="w-8 h-8 text-success" />
@@ -184,7 +135,7 @@ export default function AdminTransactions() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-foreground">{stats.successRate}</div>
+                <div className="text-2xl font-bold text-foreground">{stats.successRate}%</div>
                 <p className="text-sm text-muted-foreground">Success Rate</p>
               </div>
               <TrendingUp className="w-8 h-8 text-success" />
@@ -195,7 +146,7 @@ export default function AdminTransactions() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-foreground">{stats.totalFees}</div>
+                <div className="text-2xl font-bold text-foreground">₹{stats.totalFees.toLocaleString()}</div>
                 <p className="text-sm text-muted-foreground">Total Fees</p>
               </div>
               <DollarSign className="w-8 h-8 text-warning" />
@@ -204,7 +155,6 @@ export default function AdminTransactions() {
         </Card>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -233,13 +183,13 @@ export default function AdminTransactions() {
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {/* Transactions Table */}
       <Card>
         <CardHeader>
           <CardTitle>All Transactions ({filteredTransactions.length})</CardTitle>
@@ -258,36 +208,24 @@ export default function AdminTransactions() {
                   <TableHead>Payment Method</TableHead>
                   <TableHead>Gateway</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Net Amount</TableHead>
+                  <TableHead>Fee</TableHead>
+                  <TableHead>Net</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTransactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
-                    <TableCell className="font-medium">{transaction.id}</TableCell>
-                    <TableCell>
-                      <Button variant="link" className="p-0 h-auto">
-                        {transaction.orderId}
-                      </Button>
-                    </TableCell>
-                    <TableCell>{transaction.customer}</TableCell>
-                    <TableCell className="font-medium">
-                      <span className={transaction.type === 'refund' ? 'text-destructive' : 'text-foreground'}>
-                        {transaction.type === 'refund' ? '-' : ''}{transaction.amount}
-                      </span>
-                    </TableCell>
+                  <TableRow key={transaction.transaction_id}>
+                    <TableCell className="font-medium">TXN-{String(transaction.transaction_id).padStart(3, "0")}</TableCell>
+                    <TableCell>ORD-{String(transaction.order_id).padStart(3, "0")}</TableCell>
+                    <TableCell>{transaction.customer_name}</TableCell>
+                    <TableCell>₹{Number(transaction.amount || 0).toLocaleString()}</TableCell>
                     <TableCell>{getTypeBadge(transaction.type)}</TableCell>
                     <TableCell>{getStatusBadge(transaction.status)}</TableCell>
-                    <TableCell>{transaction.paymentMethod}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{transaction.gateway}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{transaction.date}</TableCell>
-                    <TableCell className="font-medium">
-                      <span className={transaction.type === 'refund' ? 'text-destructive' : 'text-success'}>
-                        {transaction.net}
-                      </span>
-                    </TableCell>
+                    <TableCell className="capitalize">{transaction.payment_method}</TableCell>
+                    <TableCell>{transaction.gateway}</TableCell>
+                    <TableCell>{String(transaction.created_at).slice(0, 10)}</TableCell>
+                    <TableCell>₹{Number(transaction.fee || 0).toLocaleString()}</TableCell>
+                    <TableCell>₹{Number(transaction.net_amount || 0).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

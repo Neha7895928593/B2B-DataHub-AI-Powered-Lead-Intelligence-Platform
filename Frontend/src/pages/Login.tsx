@@ -1,78 +1,142 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+
+type AuthMode = "login" | "signup";
 
 export default function Login() {
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  const { login, signup, isAuthenticated, user } = useAuth();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate(user.role === "admin" ? "/admin/dashboard" : "/", { replace: true });
+    }
+  }, [isAuthenticated, navigate, user]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Dummy login logic - accept any email/password for now
-    setTimeout(() => {
-      if (email && password) {
+    try {
+      const intendedPath =
+        (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "";
+      const authenticatedUser =
+        mode === "signup"
+          ? await signup({ fullName, email, password })
+          : await login({ email, password });
+
+      if (mode === "signup") {
         toast({
-          title: "Login Successful",
-          description: "Welcome to DataHub Admin Panel",
+          title: "Account created",
+          description: "Your account is ready.",
         });
-        // Redirect to admin dashboard
-        navigate("/admin/dashboard", { replace: true });
       } else {
         toast({
-          title: "Login Failed",
-          description: "Please enter both email and password",
-          variant: "destructive",
+          title: "Login successful",
+          description: "Welcome back to B2B DataHub.",
         });
       }
-      setIsLoading(false);
-    }, 1000);
-  };
 
-  const handleDemoLogin = () => {
-    setEmail("admin@datahub.com");
-    setPassword("admin123");
+      const nextPath = authenticatedUser.role === "admin" ? "/admin/dashboard" : "/";
+
+      navigate(nextPath, { replace: true });
+    } catch (error) {
+      const message = ((error as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      })?.response?.data?.message) || "Please try again.";
+
+      toast({
+        title: mode === "signup" ? "Signup failed" : "Login failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
-        {/* Logo and Brand */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center">
-           
+        <div className="text-center space-y-3">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+            <ShieldCheck className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">DataHub</h1>
-         
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">B2B DataHub Access</h1>
+
+          </div>
         </div>
 
-        {/* Login Card */}
+
+
         <Card className="border-border/50 shadow-lg">
-          <CardHeader className="text-center space-y-2">
-            <CardTitle className="text-xl">Welcome Back</CardTitle>
-            <CardDescription>
-              Sign in to access your admin dashboard
-            </CardDescription>
+          <CardHeader className="space-y-4">
+            <div className="inline-flex rounded-lg border border-border bg-muted p-1">
+              <Button
+                type="button"
+                variant={mode === "login" ? "default" : "ghost"}
+                className="flex-1"
+                onClick={() => setMode("login")}
+              >
+                Login
+              </Button>
+              <Button
+                type="button"
+                variant={mode === "signup" ? "default" : "ghost"}
+                className="flex-1"
+                onClick={() => setMode("signup")}
+              >
+                Sign up
+              </Button>
+            </div>
+            <div className="text-center">
+
+
+            </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {mode === "signup" && (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full name</Label>
+                  <Input
+                    id="fullName"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Neha Sharma"
+                    className="h-11"
+                    required
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="email">Email address</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@datahub.com"
+                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="h-11"
@@ -97,7 +161,7 @@ export default function Login() {
                     variant="ghost"
                     size="sm"
                     className="absolute right-0 top-0 h-11 px-3 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => setShowPassword((prev) => !prev)}
                   >
                     {showPassword ? (
                       <EyeOff className="w-4 h-4 text-muted-foreground" />
@@ -108,35 +172,25 @@ export default function Login() {
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={isLoading}
-              >
-                {isLoading ? "Signing in..." : "Sign In"}
+              <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                {isLoading
+                  ? mode === "signup"
+                    ? "Creating account..."
+                    : "Signing in..."
+                  : mode === "signup"
+                    ? "Create account"
+                    : "Sign in"}
               </Button>
             </form>
 
-            {/* Demo Login Alert */}
-            <Alert className="mt-4 border-primary/20 bg-primary/5">
-              <AlertDescription className="text-sm">
-                <strong>Demo Login:</strong> Use any email and password, or{" "}
-                <Button
-                  variant="link"
-                  className="h-auto p-0 text-primary underline"
-                  onClick={handleDemoLogin}
-                >
-                  click here for demo credentials
-                </Button>
-              </AlertDescription>
-            </Alert>
+            <div className="pt-3 text-center">
+              <Button asChild variant="link" className="h-auto p-0 text-primary underline">
+                <Link to="/forgot-password">Forgot password?</Link>
+              </Button>
+            </div>
+
           </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="text-center text-xs text-muted-foreground">
-          © 2024 DataHub. All rights reserved.
-        </div>
       </div>
     </div>
   );

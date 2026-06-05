@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: b2b-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-b2b_database}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-b2b_database}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./Backend
+    container_name: b2b-backend
+    env_file:
+      - ./.env
+      - ./Backend/.env
+    environment:
+      PORT: ${PORT:-5001}
+      PGUSER: ${PGUSER:-postgres}
+      PGHOST: ${PGHOST:-db}
+      PGDATABASE: ${PGDATABASE:-b2b_database}
+      PGPASSWORD: ${PGPASSWORD:-postgres}
+      PGPORT: ${PGPORT:-5432}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8081,http://127.0.0.1:8081}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@b2bdatahub.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-B2B DataHub Admin}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-B2B DataHub <no-reply@b2bdatahub.com>}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-5001}:5001"
+    volumes:
+      - uploads_data:/app/uploads
+
+  frontend:
+    build:
+      context: ./Frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: b2b-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+
+volumes:
+  postgres_data:
+  uploads_data:

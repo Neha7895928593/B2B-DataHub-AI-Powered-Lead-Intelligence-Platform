@@ -41,26 +41,24 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
   useEffect(() => {
     fetchCountries();
     fetchCategories();
-  }, []);
+  }, [fetchCountries, fetchCategories]);
 
   // Fetch states when country changes
   useEffect(() => {
     setState("");
     setCity("");
-    console.log(country)
     if (country) {
       fetchStates(country); // country = selected country_id as string
     }
-  }, [country]);
+  }, [country, fetchStates]);
 
   // Fetch cities when state changes
   useEffect(() => {
     setCity("");
-    console.log(state)
     if (state) {
       fetchCities(state); // state = selected state_id as string
     }
-  }, [state]);
+  }, [state, fetchCities]);
 
   const handleFilterChange = (type: string, value: string) => {
     const newCategory = type === "category" ? (value === "all" ? "" : value) : category;
@@ -90,15 +88,15 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
   };
 
   return (
-    <Card className="p-4 lg:p-6 border border-border shadow-sm">
-      <div className="flex items-center gap-2 mb-3 lg:mb-4">
-        <Filter className="w-4 h-4 text-primary" />
-        <h3 className="font-medium text-card-foreground text-sm lg:text-base">
-          Filters
+    <Card className="p-3 lg:p-4 border border-border shadow-sm sticky top-4">
+      <div className="flex items-center gap-2 mb-2 lg:mb-3">
+        <Filter className="w-3.5 h-3.5 text-primary" />
+        <h3 className="font-bold text-card-foreground text-xs lg:text-sm uppercase tracking-wider">
+          Market Filters
         </h3>
       </div>
 
-      <div className="space-y-3 lg:space-y-4">
+      <div className="space-y-2 lg:space-y-3">
         {/* Category */}
         <Select
           value={category}
@@ -110,13 +108,9 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
           <SelectContent>
             <SelectItem value="all">All categories</SelectItem>
             {categories.map((cat) => (
-
               <SelectItem key={cat.category_id} value={String(cat.category_id)}>
-  {cat.category_name}
-</SelectItem>
-              // <SelectItem key={cat.category_id} value={String(cat.category_id)}>
-              //   {cat.category_name}
-              // </SelectItem>
+                {cat.category_name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -133,12 +127,8 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
             <SelectItem value="all">All countries</SelectItem>
             {countries.map((c) => (
               <SelectItem key={c.country_id} value={String(c.country_id)}>
-  {c.country_name}
-</SelectItem>
-
-              // <SelectItem key={c.country_id} value={String(c.country_id)}>
-              //   {c.country_name}
-              // </SelectItem>
+                {c.country_name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -200,24 +190,6 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
 };
 
 export default SearchFilters;
-
-
-// import { useState, useEffect } from "react";
-// import { Card } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import {
-//   Select,
-//   SelectContent,
-//   SelectItem,
-//   SelectTrigger,
-//   SelectValue,
-// } from "@/components/ui/select";
-// import { Filter } from "lucide-react";
-// import { useDataContext } from "@/contexts/dataContext";
-
-// interface SearchFiltersProps {
-//   onFilterChange: (filters: {
-//     category: string;
 //     country: string;
 //     state: string;
 //     city?: string;

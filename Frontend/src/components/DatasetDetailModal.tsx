@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
-import { MapPin, Mail, Phone, Database, ShoppingCart, Download } from "lucide-react";
+import { MapPin, Mail, Phone, Database, ShoppingCart, Download, ChevronDown } from "lucide-react";
 import { Dataset, useDataContext } from "@/contexts/DataContext";
 
 interface DatasetDetailModalProps {
@@ -15,9 +15,9 @@ interface DatasetDetailModalProps {
 }
 
 const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }: DatasetDetailModalProps) => {
-  if (!dataset) return null;
-
   const { categories, countries } = useDataContext();
+
+  if (!dataset) return null;
 
   const formatNumber = (num?: number | string) => {
     if (num === undefined || num === null) return "0";
@@ -34,18 +34,62 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
     || dataset.country
     || "N/A";
 
-  const price = Math.floor(Number(dataset.total_records) * 0.05); // $0.05 per record
+  const sampleRecords = (dataset.sample_file_Data || []).slice(0, 4);
+  const hasMorePreviewRows = (dataset.sample_file_Data?.length || 0) > sampleRecords.length;
+
+  const formatValue = (value: unknown) => {
+    if (value == null || value === "") return "-";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+
+  const baseFields = [
+    { key: "name", label: "Name" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: "address", label: "Address" },
+    { key: "category_name", label: "Category" },
+    { key: "country_name", label: "Country" },
+    { key: "state_name", label: "State" },
+    { key: "city_name", label: "City" },
+  ];
+
+  const dynamicFieldKeys = Array.from(
+    sampleRecords.reduce((keys, record) => {
+      const extraFields = record.extra_fields && typeof record.extra_fields === "object"
+        ? record.extra_fields
+        : {};
+
+      Object.keys(extraFields).forEach((key) => keys.add(key));
+      return keys;
+    }, new Set<string>()),
+  );
+
+  const getFieldValue = (record: Record<string, unknown>, key: string) => {
+    if (key in record) return record[key];
+    return record.extra_fields?.[key as keyof Record<string, unknown>];
+  };
+
+  const previewColumns = [
+    { key: "name", label: "Name", width: "minmax(0,1.2fr)" },
+    { key: "email", label: "Email", width: "minmax(0,1.4fr)" },
+    { key: "phone", label: "Phone", width: "minmax(0,1fr)" },
+    { key: "country_name", label: "Country", width: "minmax(0,0.9fr)" },
+    { key: "city_name", label: "City", width: "minmax(0,0.9fr)" },
+    { key: "price", label: "Price", width: "minmax(0,0.7fr)" },
+  ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-[95vw] max-h-[95vh] overflow-y-auto mx-2 sm:mx-4">
+      <DialogContent className="max-w-[92vw] lg:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-xl lg:text-2xl font-semibold text-card-foreground">
             Dataset Details
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 lg:space-y-6 p-1">
+        <div className="space-y-4 lg:space-y-6 pt-2">
 
           {/* Dataset Name */}
           <div className="space-y-2">
@@ -110,52 +154,91 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
 
           <Separator />
 
-         <Card className="shadow-md border border-border">
- 
-  <div className="overflow-x-auto">
-    {/* Table Header */}
-    <div className="hidden md:grid min-w-[800px] grid-cols-7 gap-2 lg:gap-4 bg-muted/50 px-4 lg:px-6 py-3 border-b border-border text-xs lg:text-sm font-medium text-muted-foreground">
-      <div>Name</div>
-      <div>Address</div>
-      <div>City</div>
-      <div>State</div>
-      <div>Country</div>
-      <div>Email</div>
-      <div>Phone</div>
-    </div>
+          <Card className="border border-border overflow-hidden">
+            <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase">Sample Preview</span>
+              <span className="text-[10px] text-muted-foreground">
+                Showing top {sampleRecords.length} rows
+              </span>
+            </div>
 
-    {/* Table Body */}
-    <div className="divide-y divide-border">
-      {dataset.view_record?.map((record, index) => (
-        <div
-          key={record.id || index}
-            className="px-4 lg:px-6 py-3 lg:py-4 hover:bg-blue-50 transition-colors min-w-[800px] grid grid-cols-7 gap-2 lg:gap-4 text-xs lg:text-sm items-center"
+            <div className="relative">
+              <div className="max-h-[320px] overflow-hidden">
+                <div className="overflow-x-hidden">
+                  <div
+                    className="grid gap-3 border-b border-border bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground"
+                    style={{ gridTemplateColumns: previewColumns.map((column) => column.width).join(" ") }}
+                  >
+                    {previewColumns.map((column) => (
+                      <div key={column.key} className="truncate">
+                        {column.label}
+                      </div>
+                    ))}
+                  </div>
 
-        >
-          <div className="truncate">{record.name || "-"}</div>
-          <div className="truncate">{record.address || "-"}</div>
-          <div className="truncate">{record.city_name || "-"}</div>
-          <div className="truncate">{record.state_name || "-"}</div>
-          <div className="truncate">{record.country_name || "-"}</div>
-          <div className="truncate flex justify-center items-center gap-1">
-            <Mail className="inline w-3 h-3 mr-1" /> Email
-          </div>
-          <div className="truncate flex justify-center items-center gap-1">
-            <Phone className="inline w-3 h-3 mr-1" /> Phone
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-</Card>
+                  <div className="divide-y divide-border">
+                    {sampleRecords.map((record, index) => (
+                      <div
+                        key={record.id || index}
+                        className="px-4 py-3 hover:bg-muted/10 transition-colors"
+                      >
+                        <div
+                          className="grid gap-3 text-sm"
+                          style={{ gridTemplateColumns: previewColumns.map((column) => column.width).join(" ") }}
+                        >
+                          <div className="truncate font-medium text-card-foreground">
+                            {formatValue(getFieldValue(record, "name"))}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {formatValue(getFieldValue(record, "email"))}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {formatValue(getFieldValue(record, "phone"))}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {formatValue(getFieldValue(record, "country_name"))}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {formatValue(getFieldValue(record, "city_name"))}
+                          </div>
+                          <div className="truncate font-medium text-primary">
+                            {formatValue(getFieldValue(record, "price"))}
+                          </div>
+                        </div>
+
+                        {dynamicFieldKeys.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {dynamicFieldKeys.slice(0, 4).map((key) => (
+                              <Badge key={key} variant="outline" className="text-[10px]">
+                                {key}: {formatValue(record.extra_fields?.[key])}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {hasMorePreviewRows && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card via-card/95 to-transparent">
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground flex items-center gap-1">
+                    <ChevronDown className="h-3 w-3" />
+                    More rows available in the full file
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
 
 
           {/* Pricing */}
-          <div className="bg-primary/5 p-3 lg:p-4 rounded-lg">
+          <div className="bg-primary/5 p-4 rounded-lg">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <div>
-                <div className="text-xs lg:text-sm text-muted-foreground">Dataset Price</div>
-                <div className="text-xl lg:text-2xl font-bold text-primary">₹ {dataset.filtered_total_price}</div>
+                <div className="text-xs text-muted-foreground">Dataset Price</div>
+                <div className="text-2xl font-bold text-primary">₹{dataset.filtered_total_price}</div>
                 <div className="text-xs text-muted-foreground">One-time purchase</div>
               </div>
 
@@ -331,4 +414,3 @@ export default DatasetDetailModal;
 // };
 
 // export default DatasetDetailModal;
-

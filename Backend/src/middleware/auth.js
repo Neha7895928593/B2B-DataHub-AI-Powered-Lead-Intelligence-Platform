@@ -1,43 +1,40 @@
-const jwt = require("jsonwebtoken");
-const userModel = require("../modules/user/user.model");
+import jwt from "jsonwebtoken";
+import pool from "../config/db.js";
 
-
-const auth = async (req, res, next) => {
+export const auth = async (req, res, next) => {
   try {
     const token = req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
-      return res.status(401).json({ message: "No token provided" });
+      return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const result = await pool.query(
+      "SELECT user_id, full_name, email, role, created_at FROM users WHERE user_id = $1",
+      [decoded.id],
+    );
 
-    const user = await userModel.findById(decoded.id);
-
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
+    if (!result.rows.length) {
+      return res.status(401).json({ success: false, message: "User not found" });
     }
 
-    req.user = user; 
+    req.user = result.rows[0];
     next();
-  } catch (err) {
-    console.error("Auth Middleware Error:", err);
-    res.status(401).json({ message: "Unauthorized" });
+  } catch (error) {
+    console.error("Auth middleware error:", error);
+    return res.status(401).json({ success: false, message: "Unauthorized" });
   }
 };
 
+export const requireRole = (...roles) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: "Authentication required" });
+  }
 
-const authorizeRoles = (...roles) => {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Access denied: insufficient role' });
-    }
-    next();
-  };
-};
+  if (!roles.length || roles.includes(req.user.role)) {
+    return next();
+  }
 
-
-module.exports = {
-  auth,
-  authorizeRoles,
+  return res.status(403).json({ success: false, message: "Access denied" });
 };

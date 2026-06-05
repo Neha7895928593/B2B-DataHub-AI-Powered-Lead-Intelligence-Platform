@@ -1,157 +1,126 @@
-B2B Lead Generation & Management Platform
-This is a comprehensive full-stack platform designed for B2B professionals to import, segment, and manage lead data. It streamlines the process of handling large prospect lists from CSV or Excel files, preparing them for sales and marketing campaigns.
-The application features a powerful Node.js/Express backend with a PostgreSQL database and a responsive React frontend built with Vite.
-Key Features
-Bulk Lead Import: Easily upload lead lists in .csv or .xlsx format.
-Dynamic Data Mapping: Map columns from your file to standard database fields like name, email, and phone.
-Data Segmentation: Filter and organize leads by category, country, state, and city.
-Centralized Database: Store all your B2B lead data in a structured and scalable PostgreSQL database.
-RESTful API: A clean and efficient API for all data operations.
-Prerequisites
-Before you begin, ensure you have the following installed on your system:
-Node.js (v16.x or higher)
-npm (included with Node.js)
-PostgreSQL
-Local Setup Instructions
-Follow these steps to get the project running on your local machine.
-1. Backend Setup
-a. Navigate to the backend directory and install dependencies:
-code
-Bash
-cd backend
-npm install
-b. Create the PostgreSQL Database:
-Create a dedicated database for the application. You can use psql or a GUI tool like pgAdmin.
-code
-Bash
-# Log in to PostgreSQL
-psql -U postgres
+# B2B DataHub
 
-# Create the leads database
-CREATE DATABASE b2b_database;
+B2B DataHub is a full-stack lead intelligence platform for importing, organizing, filtering, and reviewing business datasets at scale. It is built as a portfolio-ready product that demonstrates practical product thinking across data ingestion, admin workflows, API design, and production deployment.
 
-#create tables 
--- old table delete
-DROP TABLE IF EXISTS dataset, dataset_source, city, state, country, category;
+The platform also includes an insight layer that scores dataset quality and suggests outreach actions for sales operations teams.
 
--- Category Table
-CREATE TABLE category (
-    category_id SERIAL PRIMARY KEY,
-    category_name VARCHAR(255) UNIQUE NOT NULL
-);
+## Why this project matters
 
--- Country Table
-CREATE TABLE country (
-    country_id SERIAL PRIMARY KEY,
-    country_name VARCHAR(255) UNIQUE NOT NULL
-);
+Sales and operations teams often receive raw CSV or Excel lead files that are inconsistent, duplicated, and difficult to explore. This project turns that workflow into a structured system:
 
--- State Table
-CREATE TABLE state (
-    state_id SERIAL PRIMARY KEY,
-    state_name VARCHAR(255) NOT NULL,
-    country_id INTEGER REFERENCES country(country_id) ON DELETE CASCADE,
-    UNIQUE (state_name, country_id)
-);
+- Upload CSV and Excel lead files
+- Map dataset fields into normalized entities
+- Organize records by category, country, state, and city
+- View dataset summaries and record-level drill-downs
+- Score datasets with an AI-style readiness model
+- Run the full stack with Docker for production-style deployment
 
--- City Table
-CREATE TABLE city (
-    city_id SERIAL PRIMARY KEY,
-    city_name VARCHAR(255) NOT NULL,
-    state_id INTEGER REFERENCES state(state_id) ON DELETE CASCADE,
-    UNIQUE (city_name, state_id)
-);
+## Tech stack
 
--- Dataset Source Table 
-CREATE TABLE dataset_source (
-    source_id SERIAL PRIMARY KEY,
-    source_name VARCHAR(255),
-    description TEXT,
-    proof_attachment VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+- Frontend: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- Backend: Node.js, Express
+- Database: PostgreSQL
+- File handling: Multer, XLSX parser, persistent local storage
+- Deployment: Docker, Docker Compose, Nginx
 
--- Main Dataset Table ()
-CREATE TABLE dataset (
-    dataset_id SERIAL PRIMARY KEY,
-    source_id INTEGER REFERENCES dataset_source(source_id) ON DELETE CASCADE,
-    category_id INTEGER REFERENCES category(category_id),
-    country_id INTEGER REFERENCES country(country_id),
-    state_id INTEGER REFERENCES state(state_id),
-    city_id INTEGER REFERENCES city(city_id),
-    name VARCHAR(255),
-    address TEXT,
-    phone VARCHAR(50),
-    email VARCHAR(255),
-    price NUMERIC(10, 2),
-    extra_fields JSONB, -- JSONB extra data store karne ke liye behtar hai
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+## Highlights
 
--- Indexes for faster searching
-CREATE INDEX idx_dataset_email ON dataset(email);
-CREATE INDEX idx_dataset_phone ON dataset(phone);
-CREATE INDEX idx_dataset_source ON dataset(source_id);
+- Production-style container setup with separate frontend/backend services and Nginx reverse proxy
+- Nginx-served frontend with `/api` reverse proxy
+- PostgreSQL auto-initialization through [`database/init.sql`](./database/init.sql)
+- Environment-based configuration for frontend and backend
+- AI insights panel for dataset scoring, enrichment signals, and outreach recommendations
+- Portfolio-safe docs and starter configuration files
 
-default category//////////////
+## Project structure
 
-INSERT INTO category (category_name) VALUES ('Default Category');
-INSERT INTO country (country_name) VALUES ('Default Country');
-INSERT INTO state (state_name, country_id) VALUES ('Default State', 1);
-INSERT INTO city (city_name, state_id) VALUES ('Default City', 1);
+- [Frontend](./Frontend)
+- [Backend](./Backend)
+- [database/init.sql](./database/init.sql)
+- [docker-compose.yml](./docker-compose.yml)
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [LICENSE](./LICENSE)
 
+## Run with Docker
 
+1. Create your local env file:
 
-# Exit psql
-\q
-c. Configure Environment Variables:
-In the /backend directory, create a .env file by copying the example file.
-code
-Bash
+```bash
 cp .env.example .env
-Open the new .env file and update it with your local database credentials:
-code
-Env
-# /backend/.env
+```
 
-PGUSER=postgres
-PGHOST=localhost
-PGDATABASE=b2b_database
-PGPASSWORD=your_local_postgres_password
-PGPORT=5432
-d. Initialize the Database Schema:
-The schema.sql file contains the required table structures. Run this script on your database to create the tables.
-code
-Bash
-psql -U postgres -d b2b_leads_db -f path/to/your/schema.sql```
-This will create the `dataset`, `category`, `country`, and other necessary tables for storing lead data.
+2. Update values if required.
 
-**e. Start the Backend Server:**
+Important:
+- Keep `POSTGRES_*` and `PG*` aligned.
+- Change `POSTGRES_PORT`, `BACKEND_PORT`, or `FRONTEND_PORT` if those ports are already in use.
+- Set a strong `JWT_SECRET` before using signup/login in production.
+- Uploads are stored in a persistent Docker volume mounted at `/app/uploads`.
+
+3. Start the full stack:
+
 ```bash
-# Run in development mode with auto-reload
-npm run dev```
-The backend API will now be running on `http://localhost:5000`.
+docker compose up --build -d
+```
 
----
+4. Default access URLs:
 
-### 2. Frontend Setup
+- Frontend: `http://localhost:8081`
+- Backend health: `http://localhost:5001/health`
 
-**a. Navigate to the frontend directory and install dependencies:**
+If your machine already uses `8081` or `5432`, change the ports in `.env` before startup.
+
+## Run for local development
+
+### Backend
+
 ```bash
-# From the project's root directory
-cd frontend
+cd Backend
+cp .env.example .env
 npm install
-b. Configure Environment Variables:
-In the /frontend directory, create a .env file and add the URL for the backend API.
-code
-Env
-# /frontend/.env
-
-VITE_API_BASE_URL=http://localhost:5000/api
-c. Start the Frontend Application:
-code
-Bash
 npm run dev
-The React application will now be running on http://localhost:3000.
-The React application will now be running on http://localhost:3000/admin. for admin-access
+```
 
+### Frontend
+
+```bash
+cd Frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Development notes:
+- Vite (dev) runs on `http://localhost:8080`
+- Frontend API calls default to `/api`
+- Vite proxies `/api` to `http://localhost:5001`
+- `/admin` now supports real signup/login and protects admin routes with JWT auth
+
+## Database
+
+The PostgreSQL schema is defined in [`database/init.sql`](./database/init.sql). When Docker starts with a fresh volume, the schema is applied automatically.
+
+To reset the database locally:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+## Environment files
+
+- Root env template: [.env.example](./.env.example)
+- Backend env template: [Backend/.env.example](./Backend/.env.example)
+- Frontend env template: [Frontend/.env.example](./Frontend/.env.example)
+
+## Authorship
+
+Developed and integrated by Neha as a production-style portfolio project with custom frontend, backend, database, and deployment implementation.
+
+## Portfolio notes
+
+- Public visitors can browse the dataset discovery experience without logging in.
+- Admin management lives behind `/admin` with signup/login and protected routes.
+- For recruiter review, the recommended flow is: browse the public UI first, then sign in to inspect the admin workspace.
+- This repository is intended to showcase product structure, deployment readiness, dataset workflows, and clean full-stack organization.
+- Strong next milestones are adding automated tests, seeded demo data, and a hosted demo link.

@@ -10,15 +10,23 @@ interface DatasetTableProps {
   datasets: Dataset[];
   currentPage: number;
   totalPages: number;
+  totalItems: number;
   onPageChange: (page: number) => void;
   onView?: (dataset: Dataset) => void;
   onPurchase?: (dataset: Dataset) => void;
   onDownload?: (dataset: Dataset) => void;
 }
 
-
-
-const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView, onPurchase, onDownload }: DatasetTableProps) => {
+const DatasetTable = ({
+  datasets,
+  currentPage,
+  totalPages,
+  totalItems,
+  onPageChange,
+  onView,
+  onPurchase,
+  onDownload,
+}: DatasetTableProps) => {
   const { toast } = useToast();
 
   const handleAction = (action: string, datasetName: string, dataset?: Dataset) => {
@@ -43,7 +51,7 @@ const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView,
   return (
     <Card className="shadow-md border border-border overflow-hidden">
       {/* Table Header - Hidden on mobile, shown on larger screens */}
-      <div className="hidden md:block bg-muted/50 px-4 lg:px-6 py-3 border-b border-border">
+      <div className="hidden md:block bg-muted/50 px-4 lg:px-6 py-2 border-b border-border">
         <div className="grid grid-cols-6 gap-2 lg:gap-4 text-xs lg:text-sm font-medium text-muted-foreground">
           <div className="col-span-2">NAME</div>
           <div className="text-center">Total Records</div>
@@ -64,7 +72,7 @@ const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView,
         {datasets.map((dataset, index) => (
           <div 
             key={dataset.id} 
-            className="px-4 lg:px-6 py-3 lg:py-4 hover:bg-muted/20 transition-colors"
+            className="px-4 lg:px-6 py-2 lg:py-3 hover:bg-muted/20 transition-colors"
           >
             {/* Mobile Layout */}
             <div className="block md:hidden space-y-3">
@@ -190,7 +198,7 @@ const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView,
       <div className="px-4 lg:px-6 py-3 bg-muted/50 border-t border-border">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="text-xs lg:text-sm text-muted-foreground">
-            Showing {((currentPage - 1) * 4) + 1} - {Math.min(currentPage * 4, datasets.length * currentPage)} of {datasets.length * totalPages}
+            Showing {totalItems === 0 ? 0 : ((currentPage - 1) * 4) + 1} - {Math.min(currentPage * 4, totalItems)} of {totalItems}
           </div>
           
           <div className="flex items-center gap-2">
@@ -227,37 +235,6 @@ const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView,
 };
 
 export default DatasetTable;
-
-
-// import { useState } from "react";
-// import { Button } from "@/components/ui/button";
-// import { Card } from "@/components/ui/card";
-// import { Eye, Download, ShoppingCart, Mail, Phone, ChevronLeft, ChevronRight } from "lucide-react";
-// import { useToast } from "@/hooks/use-toast";
-
-// interface Dataset {
-//   id: string;
-//   name: string;
-//   totalRecords: number;
-//   emails: number;
-//   phones: number;
-//   category: string;
-//   country: string;
-//   state?: string;
-// }
-
-// interface DatasetTableProps {
-//   datasets: Dataset[];
-//   currentPage: number;
-//   totalPages: number;
-//   onPageChange: (page: number) => void;
-//   onView?: (dataset: Dataset) => void;
-//   onPurchase?: (dataset: Dataset) => void;
-//   onDownload?: (dataset: Dataset) => void;
-// }
-
-// const DatasetTable = ({ datasets, currentPage, totalPages, onPageChange, onView, onPurchase, onDownload }: DatasetTableProps) => {
-//   const { toast } = useToast();
 
 //   const handleAction = (action: string, datasetName: string, dataset?: Dataset) => {
 //     if (action === "View" && dataset && onView) {

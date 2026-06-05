@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function AdminLayout() {
   const [notifications] = useState(3);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/admin", { replace: true });
+  };
 
   return (
     <SidebarProvider>
@@ -59,8 +67,8 @@ export function AdminLayout() {
                       <User className="w-4 h-4 text-primary-foreground" />
                     </div>
                     <div className="hidden lg:block text-left">
-                      <p className="text-sm font-medium">Admin User</p>
-                      <p className="text-xs text-muted-foreground">admin@datahub.com</p>
+                      <p className="text-sm font-medium">{user?.fullName || "Admin User"}</p>
+                      <p className="text-xs text-muted-foreground">{user?.email || "admin@datahub.com"}</p>
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
@@ -76,7 +84,7 @@ export function AdminLayout() {
                     Notifications
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive">
+                  <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>

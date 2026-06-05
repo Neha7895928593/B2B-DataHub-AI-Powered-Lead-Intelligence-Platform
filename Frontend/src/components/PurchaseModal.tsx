@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, ShoppingCart, Check } from "lucide-react";
-import { Dataset, useDataContext } from "@/contexts/DataContext";
-import {QRCodeCanvas} from 'qrcode.react'
+import { AlertCircle, CreditCard, ShoppingCart, Check } from "lucide-react";
+import { Dataset } from "@/contexts/DataContext";
+import { createOrder } from "@/api/apiHub";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PurchaseModalProps {
   dataset: Dataset | null;
@@ -16,24 +19,16 @@ interface PurchaseModalProps {
 }
 
 const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [step, setStep] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi">("card");
-
-  const {
-    countries,
-    categories,
-    datasets,
-  
-    fetchCountries,
-    fetchCategories,
-    fetchDatasets,
-    
-  } = useDataContext();
+  const [paymentMethod, setPaymentMethod] = useState<"offline">("offline");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderId, setOrderId] = useState<string>("");
   
   const [formData, setFormData] = useState({
-    email: "",
     company: "",
-    name: "",
     phone: "",
     cardNumber: "",
     expiry: "",
@@ -68,29 +63,74 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
     if (step > 1) setStep(step - 1);
   };
 
-  const handlePurchase = () => {
-    // Simulate purchase success
-    setStep(4);
-    setTimeout(() => {
+  const handlePurchase = async () => {
+    if (!dataset) return;
+    if (!isAuthenticated) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to submit the order request.",
+        variant: "destructive",
+      });
       onClose();
-      setStep(1);
-    }, 3000);
+      navigate("/login");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await createOrder({
+        datasetId: dataset.id,
+        datasetName: dataset.name,
+        totalPrice: price,
+        phone: formData.phone,
+        company: formData.company,
+        paymentMethod,
+        datasetContext: {
+          categoryId: dataset.category_id,
+          countryId: dataset.country_id,
+          stateId: dataset.state_id ?? null,
+          cityId: dataset.city_id ?? null,
+        },
+      });
+      setOrderId(`ORD-${String(response.order.order_id).padStart(3, "0")}`);
+      setStep(4);
+    } catch (error) {
+      const message = ((error as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      })?.response?.data?.message) || "Unable to create order request right now.";
+
+      toast({
+        title: "Order request failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetModal = () => {
     setStep(1);
-    setPaymentMethod("card");
+    setPaymentMethod("offline");
     setFormData({
-      email: "",
       company: "",
-      name: "",
       phone: "",
       cardNumber: "",
       expiry: "",
       cvv: "",
       billingAddress: ""
     });
+    setOrderId("");
     onClose();
+  };
+
+  const goToSignIn = () => {
+    onClose();
+    navigate("/login");
   };
 
   return (
@@ -98,7 +138,7 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
       <DialogContent className="max-w-3xl w-[95vw] max-h-[95vh] overflow-y-auto mx-4">
         <DialogHeader>
           <DialogTitle className="text-xl lg:text-2xl font-semibold text-card-foreground">
-            {step === 4 ? "Purchase Complete!" : "Purchase Dataset"}
+            {step === 4 ? "Order Request Submitted" : "Request Dataset"}
           </DialogTitle>
         </DialogHeader>
 
@@ -132,7 +172,7 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
                   <div className="flex-1">
                     <div className="font-medium text-xs lg:text-sm text-card-foreground">{dataset.name}</div>
                     <Badge variant="secondary" className="mt-1 bg-primary/10 text-primary text-xs">
-                      {categoryLabels[dataset.category]}
+                      {categoryLabels[dataset.category] || dataset.category}
                     </Badge>
                   </div>
                   <div className="sm:text-right">
@@ -169,7 +209,7 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
 
             <div className="flex justify-end pt-2">
               <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 lg:h-11 px-6 lg:px-8 text-sm lg:text-base">
-                Continue to Details
+                {isAuthenticated ? "Continue to Order Request" : "Continue to Sign In"}
               </Button>
             </div>
           </div>
@@ -177,89 +217,75 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
 
         {/* Step 2 - Contact Info */}
         {step === 2 && (
-          <div className="space-y-4 p-1">
-            <h3 className="font-medium text-card-foreground text-sm lg:text-base">Contact Information</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="name">Full Name</Label>
-                <Input id="name" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="Enter your full name" />
+          !isAuthenticated ? (
+            <div className="space-y-4 p-1">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-5 w-5 text-primary" />
+                  <div className="space-y-1">
+                    <h3 className="font-medium text-card-foreground">Sign in first</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Your order request is tied to your account, so please sign in before continuing.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" value={formData.email} onChange={(e) => handleInputChange('email', e.target.value)} placeholder="your@company.com" />
-              </div>
-              <div>
-                <Label htmlFor="company">Company Name</Label>
-                <Input id="company" value={formData.company} onChange={(e) => handleInputChange('company', e.target.value)} placeholder="Your Company" />
-              </div>
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" value={formData.phone} onChange={(e) => handleInputChange('phone', e.target.value)} placeholder="+1 (555) 123-4567" />
+              <div className="flex flex-col sm:flex-row justify-between gap-3 pt-2">
+                <Button variant="outline" onClick={handleBack}>Back</Button>
+                <Button onClick={goToSignIn} className="bg-primary hover:bg-primary/90 text-primary-foreground">Sign in to continue</Button>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4">
-              <Button variant="outline" onClick={handleBack}>Back</Button>
-              <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">Continue to Payment</Button>
+          ) : (
+            <div className="space-y-4 p-1">
+              <h3 className="font-medium text-card-foreground text-sm lg:text-base">Account details</h3>
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Signed in as</div>
+                <div className="font-medium text-card-foreground">{user?.fullName || "-"}</div>
+                <div className="text-sm text-muted-foreground break-all">{user?.email || "-"}</div>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="company">Company Name</Label>
+                  <Input id="company" value={formData.company} onChange={(e) => handleInputChange('company', e.target.value)} placeholder="Your Company" />
+                </div>
+                <div>
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input id="phone" value={formData.phone} onChange={(e) => handleInputChange('phone', e.target.value)} placeholder="+1 (555) 123-4567" />
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4">
+                <Button variant="outline" onClick={handleBack}>Back</Button>
+                <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">Continue to Order Request</Button>
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {/* Step 3 - Payment */}
         {step === 3 && (
           <div className="space-y-4 p-1">
             <h3 className="font-medium text-card-foreground flex items-center gap-2 text-sm lg:text-base">
-              <CreditCard className="w-4 h-4" /> Payment Information
+              <CreditCard className="w-4 h-4" /> Order Request
             </h3>
 
-            {/* Payment method selector */}
-            <div className="flex gap-4">
-              <Button variant={paymentMethod === "card" ? "default" : "outline"} onClick={() => setPaymentMethod("card")}>
-                Pay with Card
-              </Button>
-              <Button variant={paymentMethod === "upi" ? "default" : "outline"} onClick={() => setPaymentMethod("upi")}>
-                Pay with UPI
-              </Button>
+            <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 text-primary" />
+                <div className="space-y-1">
+                  <h4 className="font-medium text-card-foreground">Payment unavailable right now</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Online card and UPI checkout is not active yet. Submit the order request and we’ll keep it pending for manual follow-up.
+                  </p>
+                </div>
+              </div>
             </div>
-
-            {/* Card form */}
-            {paymentMethod === "card" && (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="cardNumber">Card Number</Label>
-                  <Input id="cardNumber" value={formData.cardNumber} onChange={(e) => handleInputChange('cardNumber', e.target.value)} placeholder="1234 5678 9012 3456" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="expiry">Expiry Date</Label>
-                    <Input id="expiry" value={formData.expiry} onChange={(e) => handleInputChange('expiry', e.target.value)} placeholder="MM/YY" />
-                  </div>
-                  <div>
-                    <Label htmlFor="cvv">CVV</Label>
-                    <Input id="cvv" value={formData.cvv} onChange={(e) => handleInputChange('cvv', e.target.value)} placeholder="123" />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="billingAddress">Billing Address</Label>
-                  <Input id="billingAddress" value={formData.billingAddress} onChange={(e) => handleInputChange('billingAddress', e.target.value)} placeholder="123 Main St, City, State, ZIP" />
-                </div>
-              </div>
-            )}
-
-            {/* UPI QR code */}
-            {paymentMethod === "upi" && (
-              <div className="text-center space-y-4">
-                <p className="text-muted-foreground">Scan this QR code to pay</p>
-                <QRCodeCanvas value={`upi://pay?pa=78959285932@axl=B2B&am=${total}&cu=INR`} size={180} />
-                <p className="font-medium">Amount: ₹{total}</p>
-              </div>
-            )}
 
             {/* Final summary */}
             <div className="bg-muted/50 p-4 rounded-lg">
               <div className="flex justify-between items-center">
                 <div>
-                  <div className="font-medium text-card-foreground">Total Amount</div>
-                  <div className="text-sm text-muted-foreground">Including tax</div>
+                  <div className="font-medium text-card-foreground">Order total</div>
+                  <div className="text-sm text-muted-foreground">Payment request will be marked pending</div>
                 </div>
                 <div className="text-xl font-bold text-primary">₹{total}</div>
               </div>
@@ -267,9 +293,9 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
 
             <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4">
               <Button variant="outline" onClick={handleBack}>Back</Button>
-              <Button onClick={handlePurchase} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button onClick={handlePurchase} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <ShoppingCart className="w-4 h-4 mr-2" />
-                {paymentMethod === "upi" ? "Confirm UPI Payment" : "Complete Purchase"}
+                {isSubmitting ? "Submitting..." : "Submit Order Request"}
               </Button>
             </div>
           </div>
@@ -282,13 +308,14 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
               <Check className="w-8 h-8 text-green-600" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-card-foreground mb-2">Purchase Successful!</h3>
-              <p className="text-muted-foreground">You will receive a download link in your email within 5-10 minutes.</p>
+              <h3 className="text-xl font-semibold text-card-foreground mb-2">Order Request Submitted</h3>
+              <p className="text-muted-foreground">Payment is unavailable right now. Your order is saved as pending and attached to your signed-in account.</p>
             </div>
             <div className="bg-muted/50 p-4 rounded-lg">
               <div className="text-sm text-muted-foreground">Order ID</div>
-              <div className="font-mono text-card-foreground">#{Math.random().toString(36).substr(2, 9).toUpperCase()}</div>
+              <div className="font-mono text-card-foreground">{orderId}</div>
             </div>
+            <Button onClick={resetModal}>Close</Button>
           </div>
         )}
       </DialogContent>

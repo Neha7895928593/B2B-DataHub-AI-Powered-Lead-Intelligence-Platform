@@ -1,55 +1,51 @@
 
+import fs from "fs";
+import path from "path";
 import XLSX from "xlsx";
 import pool from "../../config/db.js";
-import axios from "axios";
 
 export const uploadDataFile = async (req, res) => {
+  const client = await pool.connect();
   try {
     const { description, price, category } = req.body;
-
 
     const fieldMappings = req.body.fieldMappings
       ? JSON.parse(req.body.fieldMappings)
       : {};
+    const customFieldMappings = req.body.customFieldMappings
+      ? JSON.parse(req.body.customFieldMappings)
+      : [];
 
     const file = req.files?.["file"]?.[0];
     const proofAttachmentFile = req.files?.["proofAttachment"]?.[0];
 
-    const proofFilePath = proofAttachmentFile ? proofAttachmentFile.path : null;
+    const proofFilePath = proofAttachmentFile
+      ? path.relative(process.cwd(), proofAttachmentFile.path)
+      : null;
 
     if (!file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const fileUrl = file.path; // Cloudinary URL
     let data = [];
 
-    // 1️⃣ Fetch and read CSV/Excel from Cloudinary
-    if (file.originalname.endsWith(".csv")) {
-      const response = await axios.get(fileUrl);
-      const text = response.data;
-      const lines = text.split("\n").filter(Boolean);
-      const headers = lines[0].split(",").map(h => h.trim().replace(/"/g, ""));
-      data = lines.slice(1).map(line => {
-        const values = line.split(",");
-        const obj = {};
-        headers.forEach((h, i) => (obj[h] = values[i]?.trim() || ""));
-        return obj;
-      });
-    } else {
-      const response = await axios.get(fileUrl, { responseType: "arraybuffer" });
-      const workbook = XLSX.read(response.data, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      data = XLSX.utils.sheet_to_json(sheet);
+    if (!fs.existsSync(file.path)) {
+      return res.status(400).json({ success: false, message: "Uploaded file could not be found on the server" });
     }
+
+    const workbook = XLSX.readFile(file.path, { raw: false });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
     if (!data.length) {
       return res.status(400).json({ success: false, message: "Empty Excel/CSV file" });
     }
 
 
-    const sourceResult = await pool.query(
+    await client.query("BEGIN");
+
+    const sourceResult = await client.query(
       `INSERT INTO dataset_source (source_name, description, proof_attachment) 
        VALUES ($1, $2, $3) 
        RETURNING source_id`,
@@ -61,9 +57,6 @@ export const uploadDataFile = async (req, res) => {
     let summary = { added: 0, updated: 0, unchanged: 0 };
 
     for (const row of data) {
-
-
-      console.log(data)
       // Take category from req.body first, then fallback to row data using mapping
       const categoryValue = category || row[fieldMappings.category] || row.category || "Default Category";
       const countryValue = row[fieldMappings.country] || row.country || "Default Country";
@@ -86,7 +79,7 @@ export const uploadDataFile = async (req, res) => {
       // const rowPriceValue = row[fieldMappings.price] || row.price || price || null;
 
       // --- Insert/find category
-      const categoryResult = await pool.query(
+      const categoryResult = await client.query(
         `INSERT INTO category (category_name) VALUES ($1)
      ON CONFLICT (category_name) DO UPDATE SET category_name=EXCLUDED.category_name
      RETURNING category_id`,
@@ -95,7 +88,7 @@ export const uploadDataFile = async (req, res) => {
       const categoryId = categoryResult.rows[0].category_id;
 
       // --- Insert/find country
-      const countryResult = await pool.query(
+      const countryResult = await client.query(
         `INSERT INTO country (country_name) VALUES ($1)
      ON CONFLICT (country_name) DO UPDATE SET country_name=EXCLUDED.country_name
      RETURNING country_id`,
@@ -104,7 +97,7 @@ export const uploadDataFile = async (req, res) => {
       const countryId = countryResult.rows[0].country_id;
 
       // --- Insert/find state
-      const stateResult = await pool.query(
+      const stateResult = await client.query(
         `INSERT INTO state (state_name, country_id) VALUES ($1, $2)
      ON CONFLICT (state_name, country_id) DO UPDATE SET state_name=EXCLUDED.state_name
      RETURNING state_id`,
@@ -113,7 +106,7 @@ export const uploadDataFile = async (req, res) => {
       const stateId = stateResult.rows[0].state_id;
 
       // --- Insert/find city
-      const cityResult = await pool.query(
+      const cityResult = await client.query(
         `INSERT INTO city (city_name, state_id) VALUES ($1, $2)
      ON CONFLICT (city_name, state_id) DO UPDATE SET city_name=EXCLUDED.city_name
      RETURNING city_id`,
@@ -123,19 +116,40 @@ export const uploadDataFile = async (req, res) => {
 
       // --- Collect extra fields
       const standardFields = [
-        fieldMappings.category, fieldMappings.state, fieldMappings.city,
-        fieldMappings.name, fieldMappings.address, fieldMappings.phone, fieldMappings.email,
-        "price"
-      ];
+        fieldMappings.category,
+        fieldMappings.country,
+        fieldMappings.state,
+        fieldMappings.city,
+        fieldMappings.name,
+        fieldMappings.address,
+        fieldMappings.phone,
+        fieldMappings.email,
+        fieldMappings.price,
+      ].filter(Boolean);
+
+      const customSources = customFieldMappings
+        .map((item) => item?.source)
+        .filter(Boolean);
+
       const extraFields = {};
+
+      for (const item of customFieldMappings) {
+        const label = item?.label?.trim();
+        const source = item?.source;
+
+        if (label && source && row[source] !== undefined && row[source] !== "") {
+          extraFields[label] = row[source];
+        }
+      }
+
       for (const key in row) {
-        if (!standardFields.includes(key)) {
+        if (!standardFields.includes(key) && !customSources.includes(key)) {
           extraFields[key] = row[key];
         }
       }
 
       // --- Check if dataset exists
-      const existing = await pool.query(
+      const existing = await client.query(
         "SELECT * FROM dataset WHERE email=$1 AND phone=$2 ",
         [emailValue, phoneValue]
       );
@@ -153,7 +167,7 @@ export const uploadDataFile = async (req, res) => {
           Number(existingRow.price) !== Number(rowPriceValue) ||
           extraChanged
         ) {
-          await pool.query(
+          await client.query(
             `UPDATE dataset
          SET category_id=$1, country_id=$2, state_id=$3, city_id=$4,
              address=$5, price=$6, extra_fields=$7
@@ -165,7 +179,7 @@ export const uploadDataFile = async (req, res) => {
           summary.unchanged += 1;
         }
       } else {
-        await pool.query(
+        await client.query(
           `INSERT INTO dataset
        (source_id, category_id, country_id, state_id, city_id, name, address, phone, email, price, extra_fields)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
@@ -175,6 +189,7 @@ export const uploadDataFile = async (req, res) => {
       }
     }
 
+    await client.query("COMMIT");
 
     res.status(200).json({
       success: true,
@@ -184,8 +199,11 @@ export const uploadDataFile = async (req, res) => {
     });
 
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Import Error:", error);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: error.message || "Server Error" });
+  } finally {
+    client.release();
   }
 };
 
@@ -230,6 +248,7 @@ export const getDatasets = async (req, res) => {
 
     const listQuery = `
       SELECT 
+        MIN(d.dataset_id) AS primary_dataset_id,
         c.category_id,
         c.category_name AS category,
         co.country_id,
@@ -290,6 +309,7 @@ ORDER BY d.dataset_id`
       list.samples = allRecords.slice(0, 10);   // max 10 preview
       list.view = allRecords.slice(0, 15);      // max 15 view
       list.purchase = allRecords;               // full list for purchase
+      list.dataset_ids = allRecords.map((row) => row.dataset_id);
 
       // List name
       list.name = `List of ${list.category}${list.city_name ? " in " + list.city_name :
@@ -340,15 +360,13 @@ export const getCountries = async (req, res) => {
 export const getStates = async (req, res) => {
   try {
     const { countryId } = req.query;
-    console.log(countryId)
     if (!countryId) {
-      console.log("no country id")
+      return res.status(400).json({ success: false, message: "countryId is required" });
     }
     const result = await pool.query(
       `SELECT state_id, state_name FROM state WHERE country_id=$1 ORDER BY state_name`,
       [countryId]
     );
-    console.log("states", result.rows)
     res.json({ success: true, states: result.rows });
   } catch (error) {
     console.error(error);
@@ -516,6 +534,67 @@ export const getDatasetSources = async (req, res) => {
   }
 };
 
+export const getDatasetSourcePreview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sourceResult = await pool.query(
+      `SELECT source_id, source_name, description, proof_attachment, created_at
+       FROM dataset_source
+       WHERE source_id = $1`,
+      [id],
+    );
+
+    if (!sourceResult.rows.length) {
+      return res.status(404).json({ success: false, message: "Dataset source not found" });
+    }
+
+    const summaryResult = await pool.query(
+      `SELECT
+         COUNT(*) AS total_records,
+         COUNT(*) FILTER (WHERE d.email IS NOT NULL AND d.email <> '') AS email_count,
+         COUNT(*) FILTER (WHERE d.phone IS NOT NULL AND d.phone <> '') AS phone_count,
+         COALESCE(SUM(d.price), 0) AS total_price
+       FROM dataset d
+       WHERE d.source_id = $1`,
+      [id],
+    );
+
+    const rowsResult = await pool.query(
+      `SELECT
+         d.dataset_id,
+         d.name,
+         d.address,
+         d.phone,
+         d.email,
+         d.price,
+         d.extra_fields,
+         c.category_name,
+         co.country_name,
+         s.state_name,
+         ci.city_name
+       FROM dataset d
+       JOIN category c ON d.category_id = c.category_id
+       JOIN country co ON d.country_id = co.country_id
+       LEFT JOIN state s ON d.state_id = s.state_id
+       LEFT JOIN city ci ON d.city_id = ci.city_id
+       WHERE d.source_id = $1
+       ORDER BY d.dataset_id
+       LIMIT 6`,
+      [id],
+    );
+
+    return res.json({
+      success: true,
+      source: sourceResult.rows[0],
+      summary: summaryResult.rows[0],
+      rows: rowsResult.rows,
+    });
+  } catch (error) {
+    console.error("Error fetching dataset source preview:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch dataset preview." });
+  }
+};
+
 
 export const deleteDatasetSource = async (req, res) => {
   const { id } = req.params;
@@ -541,5 +620,3 @@ export const deleteDatasetSource = async (req, res) => {
     client.release();
   }
 };
-
-

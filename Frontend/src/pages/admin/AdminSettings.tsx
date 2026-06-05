@@ -7,8 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Settings, Save, Globe, Shield, Bell } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminSettings() {
+  const { toast } = useToast();
   const [settings, setSettings] = useState({
     siteName: "DataHub B2B",
     adminEmail: "admin@datahub.com",
@@ -20,8 +22,10 @@ export default function AdminSettings() {
   });
 
   const handleSave = () => {
-    // Save settings logic here
-    console.log("Settings saved:", settings);
+    toast({
+      title: "Settings updated",
+      description: "Demo settings were saved for this session.",
+    });
   };
 
   return (

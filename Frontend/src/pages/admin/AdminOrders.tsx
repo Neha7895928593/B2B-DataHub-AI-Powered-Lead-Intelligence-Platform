@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,79 +25,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Search, Filter, Download, Eye, MoreHorizontal, Calendar } from "lucide-react";
-
-const orders = [
-  {
-    id: "ORD-001",
-    customer: "John Doe",
-    email: "john@example.com",
-    dataset: "US Restaurants Database",
-    amount: "$299.00",
-    status: "completed",
-    date: "2024-01-15",
-    downloadCount: 3,
-    paymentMethod: "Credit Card",
-  },
-  {
-    id: "ORD-002",
-    customer: "Jane Smith",
-    email: "jane@example.com",
-    dataset: "UK Hotels Directory",
-    amount: "$199.00",
-    status: "processing",
-    date: "2024-01-15",
-    downloadCount: 0,
-    paymentMethod: "PayPal",
-  },
-  {
-    id: "ORD-003",
-    customer: "Mike Johnson",
-    email: "mike@example.com",
-    dataset: "Global Airports List",
-    amount: "$499.00",
-    status: "completed",
-    date: "2024-01-14",
-    downloadCount: 5,
-    paymentMethod: "Credit Card",
-  },
-  {
-    id: "ORD-004",
-    customer: "Sarah Wilson",
-    email: "sarah@example.com",
-    dataset: "EU Car Dealerships",
-    amount: "$399.00",
-    status: "pending",
-    date: "2024-01-14",
-    downloadCount: 0,
-    paymentMethod: "Bank Transfer",
-  },
-  {
-    id: "ORD-005",
-    customer: "David Brown",
-    email: "david@example.com",
-    dataset: "Asian Healthcare Centers",
-    amount: "$449.00",
-    status: "completed",
-    date: "2024-01-13",
-    downloadCount: 2,
-    paymentMethod: "Credit Card",
-  },
-  {
-    id: "ORD-006",
-    customer: "Lisa Garcia",
-    email: "lisa@example.com",
-    dataset: "Australian Universities",
-    amount: "$249.00",
-    status: "failed",
-    date: "2024-01-13",
-    downloadCount: 0,
-    paymentMethod: "Credit Card",
-  },
-];
+import { getOrders } from "@/api/apiHub";
 
 export default function AdminOrders() {
+  type OrderRecord = Record<string, unknown>;
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      const data = await getOrders();
+      setOrders(data.orders || []);
+    };
+
+    loadOrders();
+  }, []);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -115,22 +59,22 @@ export default function AdminOrders() {
   };
 
   const filteredOrders = orders.filter((order) => {
-    const matchesSearch = 
-      order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.dataset.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    
+    const matchesSearch =
+      order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(order.order_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.dataset_label?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || order.payment_status === statusFilter;
+
     return matchesSearch && matchesStatus;
   });
 
   const stats = {
     total: orders.length,
-    completed: orders.filter(o => o.status === "completed").length,
-    processing: orders.filter(o => o.status === "processing").length,
-    pending: orders.filter(o => o.status === "pending").length,
-    failed: orders.filter(o => o.status === "failed").length,
+    completed: orders.filter(o => o.payment_status === "completed").length,
+    processing: orders.filter(o => o.payment_status === "processing").length,
+    pending: orders.filter(o => o.payment_status === "pending").length,
+    failed: orders.filter(o => o.payment_status === "failed").length,
   };
 
   return (
@@ -138,8 +82,7 @@ export default function AdminOrders() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Orders</h1>
-          <p className="text-muted-foreground">Manage and track all customer orders</p>
+          <h1 className="text-2xl font-bold text-foreground">Orders</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">
@@ -235,21 +178,21 @@ export default function AdminOrders() {
               </TableHeader>
               <TableBody>
                 {filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.id}</TableCell>
+                  <TableRow key={order.order_id}>
+                    <TableCell className="font-medium">ORD-{String(order.order_id).padStart(3, "0")}</TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{order.customer}</p>
-                        <p className="text-sm text-muted-foreground">{order.email}</p>
+                        <p className="font-medium">{order.customer_name}</p>
+                        <p className="text-sm text-muted-foreground">{order.customer_email}</p>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[200px]">
-                      <p className="truncate">{order.dataset}</p>
+                      <p className="truncate">{order.dataset_label}</p>
                     </TableCell>
-                    <TableCell className="font-medium">{order.amount}</TableCell>
-                    <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>{order.date}</TableCell>
-                    <TableCell>{order.downloadCount}</TableCell>
+                    <TableCell className="font-medium">₹{Number(order.total_amount || order.amount || 0).toLocaleString()}</TableCell>
+                    <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
+                    <TableCell>{String(order.created_at).slice(0, 10)}</TableCell>
+                    <TableCell>{order.download_count}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
