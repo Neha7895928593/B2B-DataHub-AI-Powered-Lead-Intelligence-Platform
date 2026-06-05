@@ -33,15 +33,15 @@ services:
       PGPORT: ${PGPORT:-5432}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8081,http://127.0.0.1:8081}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-change-admin-email@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-admin-password}
-      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-Admin User}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@b2bdatahub.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-B2B DataHub Admin}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-B2B DataHub <noreply@your-domain.com>}
+      SMTP_FROM: ${SMTP_FROM:-B2B DataHub <no-reply@b2bdatahub.com>}
     depends_on:
       db:
         condition: service_healthy
