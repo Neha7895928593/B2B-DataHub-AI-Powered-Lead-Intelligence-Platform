@@ -15,9 +15,9 @@ const pool = new Pool({
 });
 
 const seedAdminAccount = async (client) => {
-  const adminEmail = (process.env.ADMIN_EMAIL || "admin@b2bdatahub.com").toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || "Admin@12345";
-  const adminFullName = process.env.ADMIN_FULL_NAME || "B2B DataHub Admin";
+  const adminEmail = (process.env.ADMIN_EMAIL || "change-admin-email@example.com").toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || "change-admin-password";
+  const adminFullName = process.env.ADMIN_FULL_NAME || "Admin User";
   const passwordHash = await bcrypt.hash(adminPassword, 10);
 
   await client.query(
