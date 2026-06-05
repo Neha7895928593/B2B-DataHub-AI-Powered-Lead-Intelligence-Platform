@@ -13,7 +13,7 @@ export default function AdminSettings() {
   const { toast } = useToast();
   const [settings, setSettings] = useState({
     siteName: "DataHub B2B",
-    adminEmail: "admin@datahub.com",
+    adminEmail: "admin@example.com",
     enableNotifications: true,
     autoApprove: false,
     maintenanceMode: false,
