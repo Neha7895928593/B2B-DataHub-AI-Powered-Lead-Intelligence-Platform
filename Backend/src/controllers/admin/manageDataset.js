@@ -72,8 +72,11 @@ const clearDatasetsCache = () => {
 };
 
 const toFilterId = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (!normalized || normalized === "all") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
 const buildFilterWhere = (filters, options = {}) => {
