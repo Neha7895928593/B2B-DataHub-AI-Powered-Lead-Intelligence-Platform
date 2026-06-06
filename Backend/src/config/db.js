@@ -111,69 +111,89 @@ const createCoreDatasetTables = async (client) => {
   `);
 };
 
+const createOrdersTable = `
+  CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
+    customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
+    amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    payment_method VARCHAR(50) NOT NULL,
+    payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    dataset_label VARCHAR(255),
+    download_link TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const createTransactionsTable = `
+  CREATE TABLE transactions (
+    transaction_id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    type VARCHAR(50) NOT NULL DEFAULT 'sale',
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    payment_method VARCHAR(50) NOT NULL,
+    gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
+    download_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const createCustomersTable = `
+  CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(50),
+    company VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const resetTable = async (client, tableName, createSql, reason = "") => {
+  if (reason) {
+    console.warn(`${reason} Recreating "${tableName}" table.`);
+  }
+  await client.query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
+  await client.query(`CREATE TABLE ${createSql}`);
+};
+
 const ensureOrdersTable = async (client) => {
+  const hasCustomers = await hasColumn(client, "customers", "customer_id");
+  if (!hasCustomers) {
+    await resetTable(client, "customers", createCustomersTable, "Customers table schema is incompatible.");
+  }
+
   const hasOrdersTable = await client.query("SELECT to_regclass('public.orders') IS NOT NULL AS exists");
   if (!hasOrdersTable.rows[0].exists) {
-    await client.query(`
-      CREATE TABLE orders (
-        order_id SERIAL PRIMARY KEY,
-        dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
-        customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
-        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        payment_method VARCHAR(50) NOT NULL,
-        payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        dataset_label VARCHAR(255),
-        download_link TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    await client.query(`CREATE TABLE ${createOrdersTable}`);
     return;
   }
 
-  const hasOrderId = await hasColumn(client, "orders", "order_id");
-  if (!hasOrderId) {
-    console.warn("Legacy orders table detected without order_id. Rebuilding schema to continue deployment.");
-    await client.query("DROP TABLE IF EXISTS transactions");
-    await client.query("ALTER TABLE orders RENAME TO orders_legacy");
-
-    try {
-      await client.query(`
-        CREATE TABLE orders (
-          order_id SERIAL PRIMARY KEY,
-          dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
-          customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
-          amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-          tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
-          total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-          payment_method VARCHAR(50) NOT NULL,
-          payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
-          dataset_label VARCHAR(255),
-          download_link TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      const hasLegacyId = await hasColumn(client, "orders_legacy", "id");
-      if (hasLegacyId) {
-        await client.query(`
-          INSERT INTO orders (order_id, dataset_id, customer_id, amount, tax, total_amount, payment_method, payment_status, dataset_label, download_link, created_at)
-          SELECT id, dataset_id, customer_id, COALESCE(amount, 0), COALESCE(tax, 0), COALESCE(total_amount, 0), payment_method, payment_status, dataset_label, download_link, created_at
-          FROM orders_legacy
-        `);
-      } else {
-        const hasLegacyOrderId = await hasColumn(client, "orders_legacy", "order_id");
-        if (hasLegacyOrderId) {
-          await client.query(`
-            INSERT INTO orders (order_id, dataset_id, customer_id, amount, tax, total_amount, payment_method, payment_status, dataset_label, download_link, created_at)
-            SELECT order_id, dataset_id, customer_id, COALESCE(amount, 0), COALESCE(tax, 0), COALESCE(total_amount, 0), payment_method, payment_status, dataset_label, download_link, created_at
-            FROM orders_legacy
-          `);
-        }
-      }
-    } finally {
-      await client.query("DROP TABLE IF EXISTS orders_legacy");
+  const requiredOrderColumns = [
+    "order_id",
+    "dataset_id",
+    "customer_id",
+    "payment_method",
+    "payment_status",
+    "amount",
+    "created_at",
+  ];
+  for (const column of requiredOrderColumns) {
+    const hasRequiredColumn = await hasColumn(client, "orders", column);
+    if (!hasRequiredColumn) {
+      await resetTable(
+        client,
+        "orders",
+        createOrdersTable,
+        "Legacy orders table detected with incompatible schema.",
+      );
+      break;
     }
   }
 };
@@ -181,43 +201,28 @@ const ensureOrdersTable = async (client) => {
 const ensureTransactionsTable = async (client) => {
   const hasTransactions = await client.query("SELECT to_regclass('public.transactions') IS NOT NULL AS exists");
   if (!hasTransactions.rows[0].exists) {
-    await client.query(`
-      CREATE TABLE transactions (
-        transaction_id SERIAL PRIMARY KEY,
-        order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
-        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        type VARCHAR(50) NOT NULL DEFAULT 'sale',
-        status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        payment_method VARCHAR(50) NOT NULL,
-        gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
-        download_count INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    await client.query(`CREATE TABLE ${createTransactionsTable}`);
     return;
   }
 
-  const hasTransactionOrderId = await hasColumn(client, "transactions", "order_id");
-  if (!hasTransactionOrderId) {
-    console.warn("Legacy transactions table detected without order_id. Rebuilding transactions table.");
-    await client.query("DROP TABLE transactions");
-    await client.query(`
-      CREATE TABLE transactions (
-        transaction_id SERIAL PRIMARY KEY,
-        order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
-        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        type VARCHAR(50) NOT NULL DEFAULT 'sale',
-        status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        payment_method VARCHAR(50) NOT NULL,
-        gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
-        download_count INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+  const requiredTransactionColumns = [
+    "transaction_id",
+    "order_id",
+    "amount",
+    "net_amount",
+    "created_at",
+  ];
+  for (const column of requiredTransactionColumns) {
+    const hasRequiredColumn = await hasColumn(client, "transactions", column);
+    if (!hasRequiredColumn) {
+      await resetTable(
+        client,
+        "transactions",
+        createTransactionsTable,
+        "Legacy transactions table detected with incompatible schema.",
+      );
+      break;
+    }
   }
 };
 
