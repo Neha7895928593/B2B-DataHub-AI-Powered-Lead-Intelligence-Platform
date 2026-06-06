@@ -35,18 +35,12 @@ const sanitizeFilename = (value: string) =>
 const Index = () => {
   const { toast } = useToast();
   const {
-    countries,
-    categories,
     datasets,
     isDatasetsLoading,
     datasetsError,
 
-    fetchCountries,
-    fetchCategories,
     fetchDatasets,
 
-    cities,
-    fetchCities
   } = useDataContext();
 
 
@@ -72,10 +66,8 @@ const Index = () => {
 
   // Fetch initial data
   useEffect(() => {
-    fetchCountries();
-    fetchCategories();
     fetchDatasets(filters);
-  }, [fetchCountries, fetchCategories, fetchDatasets, filters]);
+  }, [fetchDatasets, filters]);
 
   // Update datasets when filters change
   const handleFilterChange = (newFilters: typeof filters) => {

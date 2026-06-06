@@ -79,6 +79,17 @@ export const getCities = async (state: string) => {
   return res.data;
 };
 
+export const getFilterOptions = async (filters: {
+  category?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+}) => {
+  const query = new URLSearchParams(filters).toString();
+  const res = await api.get(`/filter-options?${query}`);
+  return res.data;
+};
+
 
 
 

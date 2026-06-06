@@ -1,6 +1,6 @@
 import express from 'express';
 import upload from '../../config/multer.js';
-import { createCategory, createCity, createCountry, createState, deleteDatasetSource, getCategories, getCities, getCountries, getDatasetRecords, getDatasets, getDatasetSourcePreview, getDatasetSources, getStates, uploadDataFile } from '../../controllers/admin/manageDataset.js';
+import { createCategory, createCity, createCountry, createState, deleteDatasetSource, getCategories, getCities, getCountries, getDatasetRecords, getDatasets, getDatasetSourcePreview, getDatasetSources, getFilterOptions, getStates, uploadDataFile } from '../../controllers/admin/manageDataset.js';
 import { auth, requireRole } from '../../middleware/auth.js';
 
 
@@ -24,6 +24,7 @@ router.get("/countries", getCountries);
 router.get("/states", getStates);
 router.get("/city", getCities);
 router.get("/cities", getCities);
+router.get("/filter-options", getFilterOptions);
 
 
 

@@ -41,6 +41,43 @@ const clearDatasetsCache = () => {
   datasetsCache.clear();
 };
 
+const toFilterId = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildFilterWhere = (filters, options = {}) => {
+  const clauses = [];
+  const values = [];
+  let idx = 1;
+
+  if (options.category && Number.isFinite(filters.category)) {
+    clauses.push(`d.category_id = $${idx}`);
+    values.push(filters.category);
+    idx += 1;
+  }
+  if (options.country && Number.isFinite(filters.country)) {
+    clauses.push(`d.country_id = $${idx}`);
+    values.push(filters.country);
+    idx += 1;
+  }
+  if (options.state && Number.isFinite(filters.state)) {
+    clauses.push(`d.state_id = $${idx}`);
+    values.push(filters.state);
+    idx += 1;
+  }
+  if (options.city && Number.isFinite(filters.city)) {
+    clauses.push(`d.city_id = $${idx}`);
+    values.push(filters.city);
+    idx += 1;
+  }
+
+  return {
+    whereClause: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    values,
+  };
+};
+
 export const uploadDataFile = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -475,6 +512,51 @@ export const getCities = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
+  }
+};
+
+export const getFilterOptions = async (req, res) => {
+  try {
+    const filters = {
+      category: toFilterId(req.query.category),
+      country: toFilterId(req.query.country),
+      state: toFilterId(req.query.state),
+      city: toFilterId(req.query.city),
+    };
+
+    const fetchOptions = async (selectClause, filterOptions) => {
+      const { whereClause, values } = buildFilterWhere(filters, filterOptions);
+      const query = `
+        SELECT DISTINCT ${selectClause}
+        FROM dataset d
+        JOIN category c ON d.category_id = c.category_id
+        JOIN country co ON d.country_id = co.country_id
+        LEFT JOIN state s ON d.state_id = s.state_id
+        LEFT JOIN city ci ON d.city_id = ci.city_id
+        ${whereClause}
+        ORDER BY 2
+      `;
+      const result = await pool.query(query, values);
+      return result.rows;
+    };
+
+    const [categories, countries, states, cities] = await Promise.all([
+      fetchOptions("c.category_id, c.category_name", { country: true, state: true, city: true }),
+      fetchOptions("co.country_id, co.country_name", { category: true, state: true, city: true }),
+      fetchOptions("s.state_id, s.state_name", { category: true, country: true, city: true }),
+      fetchOptions("ci.city_id, ci.city_name", { category: true, country: true, state: true }),
+    ]);
+
+    res.json({
+      success: true,
+      categories,
+      countries,
+      states,
+      cities,
+    });
+  } catch (error) {
+    console.error("Error fetching filter options:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch filter options" });
   }
 };
 
