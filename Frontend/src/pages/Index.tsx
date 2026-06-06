@@ -38,6 +38,8 @@ const Index = () => {
     countries,
     categories,
     datasets,
+    isDatasetsLoading,
+    datasetsError,
 
     fetchCountries,
     fetchCategories,
@@ -150,6 +152,9 @@ const Index = () => {
   const handlePurchaseDataset = (dataset: Dataset) => {
     setPurchaseDataset(dataset);
     setIsPurchaseModalOpen(true);
+  };
+  const handleRetryDatasets = () => {
+    void fetchDatasets(filters);
   };
 
 
@@ -289,7 +294,29 @@ const Index = () => {
 
         {/* Dataset Table */}
         <div className="flex-1 order-1 xl:order-2">
-          {filteredDatasets.length === 0 ? (
+          {datasetsError ? (
+            <div className="bg-card p-6 lg:p-12 text-center border border-border rounded-lg shadow-sm space-y-3">
+              <h3 className="text-base lg:text-lg font-medium text-card-foreground">
+                Unable to load datasets
+              </h3>
+              <p className="text-muted-foreground text-sm lg:text-base">
+                {datasetsError}
+              </p>
+              <Button onClick={handleRetryDatasets} className="h-10">
+                Retry
+              </Button>
+            </div>
+          ) : isDatasetsLoading && datasets.length === 0 ? (
+            <div className="bg-card p-8 lg:p-12 text-center border border-border rounded-lg shadow-sm">
+              <div className="mx-auto mb-3 h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <h3 className="text-base lg:text-lg font-medium text-card-foreground mb-1">
+                Loading datasets
+              </h3>
+              <p className="text-muted-foreground text-sm lg:text-base">
+                This can take a moment on free-tier backend startup.
+              </p>
+            </div>
+          ) : filteredDatasets.length === 0 ? (
             <div className="bg-card p-6 lg:p-12 text-center border border-border rounded-lg shadow-sm">
               <h3 className="text-base lg:text-lg font-medium text-card-foreground mb-2">
                 No datasets found
@@ -299,17 +326,24 @@ const Index = () => {
               </p>
             </div>
           ) : (
-            <DatasetTable
-              datasets={paginatedDatasets}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={filteredDatasets.length}
-              onPageChange={handlePageChange}
-              onView={handleViewDataset}
-              onPurchase={handlePurchaseDataset}
-              onDownload={handleDownloadSample}
-            />
-          )}
+            <>
+              <DatasetTable
+                datasets={paginatedDatasets}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredDatasets.length}
+                onPageChange={handlePageChange}
+                onView={handleViewDataset}
+                onPurchase={handlePurchaseDataset}
+                onDownload={handleDownloadSample}
+              />
+              {isDatasetsLoading && datasets.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2 text-right">
+                  Updating data from server...
+                </p>
+              )}
+            </>
+            )}
         </div>
       </div>
 

@@ -109,6 +109,27 @@ const createCoreDatasetTables = async (client) => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_category_country_state_city
+      ON dataset (category_id, country_id, state_id, city_id)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_country
+      ON dataset (country_id)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_state
+      ON dataset (state_id)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_city
+      ON dataset (city_id)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_source
+      ON dataset (source_id)
+  `);
 };
 
 const createOrdersTable = `

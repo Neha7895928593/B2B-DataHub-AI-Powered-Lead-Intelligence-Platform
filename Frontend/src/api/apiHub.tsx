@@ -38,7 +38,7 @@ export const chatWithAI = async (payload: { message: string }) => {
 };
 
 /// Dataset Summary
-export const getDatasetsSummary = async (filters: { category?: string; country?: string; state?: string }) => {
+export const getDatasetsSummary = async (filters: { category?: string; country?: string; state?: string; city?: string }) => {
   const query = new URLSearchParams(filters).toString();
   const res = await api.get(`/datasets?${query}`);
   return res.data;

@@ -86,12 +86,14 @@ type DataContextType = {
   cities: City[];
   categories: Category[];
   datasets: Dataset[];
+  isDatasetsLoading: boolean;
+  datasetsError: string | null;
   // datasetRecords: DatasetRecord[];
   fetchCountries: () => Promise<void>;
   fetchStates: (country:string ) => Promise<void>;
   fetchCities: ( state:string) => Promise<void>;
   fetchCategories: () => Promise<void>;
-  fetchDatasets: (filters: { category?: string; country?: string; state?: string }) => Promise<void>;
+  fetchDatasets: (filters: { category?: string; country?: string; state?: string; city?: string }) => Promise<void>;
   // fetchDatasetRecords: (id: string) => Promise<void>;
 };
 
@@ -103,6 +105,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [cities, setCities] = useState<City[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [isDatasetsLoading, setIsDatasetsLoading] = useState(false);
+  const [datasetsError, setDatasetsError] = useState<string | null>(null);
   // const [datasetRecords, setDatasetRecords] = useState<DatasetRecord[]>([]);
 
   //  Fetch Countries
@@ -148,6 +152,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const fetchDatasets = useCallback(
     async (filters: { category?: string; country?: string; state?: string; city?: string }) => {
       try {
+        setIsDatasetsLoading(true);
+        setDatasetsError(null);
         const data = await getDatasetsSummary(filters);
 
         if (!data || !data.lists) {
@@ -184,7 +190,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         setDatasets(mappedDatasets);
       } catch (error) {
         console.error("Error fetching datasets:", error);
-        setDatasets([]);
+        setDatasetsError("Failed to load datasets. Retrying or refreshing will usually fix this.");
+      } finally {
+        setIsDatasetsLoading(false);
       }
     },
     [],
@@ -197,6 +205,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       cities,
       categories,
       datasets,
+      isDatasetsLoading,
+      datasetsError,
       fetchCountries,
       fetchStates,
       fetchCities,
@@ -209,6 +219,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       cities,
       categories,
       datasets,
+      isDatasetsLoading,
+      datasetsError,
       fetchCountries,
       fetchStates,
       fetchCities,

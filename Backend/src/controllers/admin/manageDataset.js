@@ -4,6 +4,43 @@ import path from "path";
 import XLSX from "xlsx";
 import pool from "../../config/db.js";
 
+const DATASETS_CACHE_TTL_MS = 15000;
+const datasetsCache = new Map();
+
+const buildDatasetsCacheKey = (filters) => {
+  const payload = {
+    category: filters.category || null,
+    country: filters.country || null,
+    state: filters.state || null,
+    city: filters.city || null,
+    source: filters.source || null,
+  };
+  return JSON.stringify(payload);
+};
+
+const getCachedDatasets = (filters) => {
+  const key = buildDatasetsCacheKey(filters);
+  const cached = datasetsCache.get(key);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    datasetsCache.delete(key);
+    return null;
+  }
+  return cached.data;
+};
+
+const setCachedDatasets = (filters, data) => {
+  const key = buildDatasetsCacheKey(filters);
+  datasetsCache.set(key, {
+    data,
+    expiresAt: Date.now() + DATASETS_CACHE_TTL_MS,
+  });
+};
+
+const clearDatasetsCache = () => {
+  datasetsCache.clear();
+};
+
 export const uploadDataFile = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -190,6 +227,7 @@ export const uploadDataFile = async (req, res) => {
     }
 
     await client.query("COMMIT");
+    clearDatasetsCache();
 
     res.status(200).json({
       success: true,
@@ -214,40 +252,85 @@ export const getDatasets = async (req, res) => {
   try {
     const { category, country, state, city, source } = req.query;
 
-    // ===== Base query for summary =====
-    let baseQuery = `FROM dataset d
-                     JOIN category c ON d.category_id = c.category_id
-                     JOIN country co ON d.country_id = co.country_id
-                     JOIN state s ON d.state_id = s.state_id
-                     JOIN city ci ON d.city_id = ci.city_id
-                     WHERE 1=1`;
+    const normalizedCategory = category ? Number(category) : null;
+    const normalizedCountry = country ? Number(country) : null;
+    const normalizedState = state ? Number(state) : null;
+    const normalizedCity = city ? Number(city) : null;
+    const normalizedSource = source ? Number(source) : null;
 
     const values = [];
     let idx = 1;
+    const normalizedFilters = {
+      category: Number.isFinite(normalizedCategory) ? normalizedCategory : null,
+      country: Number.isFinite(normalizedCountry) ? normalizedCountry : null,
+      state: Number.isFinite(normalizedState) ? normalizedState : null,
+      city: Number.isFinite(normalizedCity) ? normalizedCity : null,
+      source: Number.isFinite(normalizedSource) ? normalizedSource : null,
+    };
 
-    if (category) { baseQuery += ` AND c.category_id = $${idx}`; values.push(category); idx++; }
-    if (country) { baseQuery += ` AND co.country_id = $${idx}`; values.push(country); idx++; }
-    if (state) { baseQuery += ` AND s.state_id = $${idx}`; values.push(state); idx++; }
-    if (city) { baseQuery += ` AND ci.city_id = $${idx}`; values.push(city); idx++; }
-    if (source) { baseQuery += ` AND d.source_id = $${idx}`; values.push(source); idx++; }
+    const cachedPayload = getCachedDatasets(normalizedFilters);
+    if (cachedPayload) {
+      res.set("x-dataset-cache", "HIT");
+      return res.status(200).json(cachedPayload);
+    }
 
-    // ===== Global Summary =====
-    const totalRes = await pool.query(`SELECT COUNT(*) AS total_records ${baseQuery}`, values);
-    const totalRecords = parseInt(totalRes.rows[0].total_records, 10);
+    const whereClauses = ["1 = 1"];
 
-    const emailRes = await pool.query(`SELECT COUNT(*) AS email_count ${baseQuery} AND d.email IS NOT NULL AND d.email <> ''`, values);
-    const emailCount = parseInt(emailRes.rows[0].email_count, 10);
+    if (Number.isFinite(normalizedCategory)) {
+      whereClauses.push(`c.category_id = $${idx}`);
+      values.push(normalizedCategory);
+      idx += 1;
+    }
+    if (Number.isFinite(normalizedCountry)) {
+      whereClauses.push(`co.country_id = $${idx}`);
+      values.push(normalizedCountry);
+      idx += 1;
+    }
+    if (Number.isFinite(normalizedState)) {
+      whereClauses.push(`s.state_id = $${idx}`);
+      values.push(normalizedState);
+      idx += 1;
+    }
+    if (Number.isFinite(normalizedCity)) {
+      whereClauses.push(`ci.city_id = $${idx}`);
+      values.push(normalizedCity);
+      idx += 1;
+    }
+    if (Number.isFinite(normalizedSource)) {
+      whereClauses.push(`d.source_id = $${idx}`);
+      values.push(normalizedSource);
+      idx += 1;
+    }
 
-    const phoneRes = await pool.query(`SELECT COUNT(*) AS phone_count ${baseQuery} AND d.phone IS NOT NULL AND d.phone <> ''`, values);
-    const phoneCount = parseInt(phoneRes.rows[0].phone_count, 10);
+    const whereClause = `WHERE ${whereClauses.join(" AND ")}`;
+    const baseQuery = `
+      FROM dataset d
+      JOIN category c ON d.category_id = c.category_id
+      JOIN country co ON d.country_id = co.country_id
+      LEFT JOIN state s ON d.state_id = s.state_id
+      LEFT JOIN city ci ON d.city_id = ci.city_id
+      ${whereClause}
+    `;
 
-    // ===== Lists with Totals =====
+    const summaryResult = await pool.query(
+      `SELECT
+        COUNT(*)::int AS total_records,
+        COUNT(*) FILTER (WHERE d.email IS NOT NULL AND d.email <> '')::int AS email_count,
+        COUNT(*) FILTER (WHERE d.phone IS NOT NULL AND d.phone <> '')::int AS phone_count
+      ${baseQuery}`,
+      values,
+    );
+
+    const totalRecords = Number(summaryResult.rows[0]?.total_records || 0);
+    const emailCount = Number(summaryResult.rows[0]?.email_count || 0);
+    const phoneCount = Number(summaryResult.rows[0]?.phone_count || 0);
+
     let groupByCols = `c.category_id, c.category_name, co.country_id, co.country_name`;
     if (state || city) groupByCols += `, s.state_id, s.state_name`;
     if (city) groupByCols += `, ci.city_id, ci.city_name`;
 
     const listQuery = `
-      SELECT 
+      SELECT
         MIN(d.dataset_id) AS primary_dataset_id,
         c.category_id,
         c.category_name AS category,
@@ -255,76 +338,78 @@ export const getDatasets = async (req, res) => {
         co.country_name AS country,
         ${state || city ? "s.state_id, s.state_name," : ""}
         ${city ? "ci.city_id, ci.city_name," : ""}
-        COUNT(*) AS total_records,
-        COUNT(d.email) FILTER (WHERE d.email IS NOT NULL AND d.email <> '') AS email_count,
-        COUNT(d.phone) FILTER (WHERE d.phone IS NOT NULL AND d.phone <> '') AS phone_count,
-        COALESCE(SUM(d.price), 0) AS total_price
+        COUNT(*)::int AS total_records,
+        COUNT(d.email) FILTER (WHERE d.email IS NOT NULL AND d.email <> '')::int AS email_count,
+        COUNT(d.phone) FILTER (WHERE d.phone IS NOT NULL AND d.phone <> '')::int AS phone_count,
+        COALESCE(SUM(d.price), 0)::numeric(20, 4) AS total_price
       FROM dataset d
       JOIN category c ON d.category_id = c.category_id
       JOIN country co ON d.country_id = co.country_id
-      ${state || city ? "JOIN state s ON d.state_id = s.state_id" : ""}
-      ${city ? "JOIN city ci ON d.city_id = ci.city_id" : ""}
-      WHERE 1=1
-        ${category ? `AND c.category_id = ${category}` : ""}
-        ${country ? `AND co.country_id = ${country}` : ""}
-        ${state ? `AND s.state_id = ${state}` : ""}
-        ${city ? `AND ci.city_id = ${city}` : ""}
+      LEFT JOIN state s ON d.state_id = s.state_id
+      LEFT JOIN city ci ON d.city_id = ci.city_id
+      ${whereClause}
       GROUP BY ${groupByCols}
       ORDER BY co.country_name, c.category_name;
     `;
 
-    const listRes = await pool.query(listQuery);
+    const listRes = await pool.query(listQuery, values);
     const lists = listRes.rows;
 
-    // ===== Attach list-wise data (samples, view, purchase) =====
     for (let list of lists) {
-      const listDataQuery = `
-      SELECT 
-  d.*,
-  c.category_name,
-  co.country_name,
-  s.state_name,
-  ci.city_name
-FROM dataset d
-JOIN category c ON d.category_id = c.category_id
-JOIN country co ON d.country_id = co.country_id
-LEFT JOIN state s ON d.state_id = s.state_id
-LEFT JOIN city ci ON d.city_id = ci.city_id
-WHERE d.category_id = $1
-  AND d.country_id = $2
-  ${list.state_id ? "AND d.state_id = $3" : ""}
-  ${list.city_id ? "AND d.city_id = $4" : ""}
-ORDER BY d.dataset_id`
-        ;
+      const listDataRes = await pool.query(
+        `
+        SELECT
+          d.dataset_id,
+          d.name,
+          d.address,
+          d.phone,
+          d.email,
+          d.price,
+          d.extra_fields,
+          c.category_name,
+          co.country_name,
+          s.state_name,
+          ci.city_name
+        FROM dataset d
+        JOIN category c ON d.category_id = c.category_id
+        JOIN country co ON d.country_id = co.country_id
+        LEFT JOIN state s ON d.state_id = s.state_id
+        LEFT JOIN city ci ON d.city_id = ci.city_id
+        WHERE d.category_id = $1
+          AND d.country_id = $2
+          AND ($3::int IS NULL OR d.state_id = $3)
+          AND ($4::int IS NULL OR d.city_id = $4)
+        ORDER BY d.dataset_id
+        LIMIT 15
+        `,
+        [
+          Number(list.category_id),
+          Number(list.country_id),
+          list.state_id ? Number(list.state_id) : null,
+          list.city_id ? Number(list.city_id) : null,
+        ],
+      );
 
-
-      const params = [list.category_id, list.country_id];
-      if (list.state_id) params.push(list.state_id);
-      if (list.city_id) params.push(list.city_id);
-
-      const listDataRes = await pool.query(listDataQuery, params);
       const allRecords = listDataRes.rows;
-
-      // Attach data
-      list.samples = allRecords.slice(0, 10);   // max 10 preview
-      list.view = allRecords.slice(0, 15);      // max 15 view
-      list.purchase = allRecords;               // full list for purchase
+      list.samples = allRecords.slice(0, 10);
+      list.view = allRecords.slice(0, 5);
       list.dataset_ids = allRecords.map((row) => row.dataset_id);
 
-      // List name
       list.name = `List of ${list.category}${list.city_name ? " in " + list.city_name :
         list.state_name ? " in " + list.state_name :
           list.country ? " in " + list.country : ""
         }`;
     }
 
-    // ===== Response =====
-    res.status(200).json({
+    const payload = {
       success: true,
       summary: { totalRecords, emailCount, phoneCount },
-      lists
-    });
+      lists,
+    };
 
+    setCachedDatasets(normalizedFilters, payload);
+    res.set("x-dataset-cache", "MISS");
+    res.status(200).json(payload);
   } catch (error) {
     console.error("Get Datasets Error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -606,8 +691,9 @@ export const deleteDatasetSource = async (req, res) => {
     await client.query('DELETE FROM dataset WHERE source_id = $1', [id]);
     
     await client.query('DELETE FROM dataset_source WHERE source_id = $1', [id]);
-  
+
     await client.query('COMMIT');
+    clearDatasetsCache();
     
     res.json({ success: true, message: "Dataset source and all related leads deleted successfully." });
   } catch (error) {
