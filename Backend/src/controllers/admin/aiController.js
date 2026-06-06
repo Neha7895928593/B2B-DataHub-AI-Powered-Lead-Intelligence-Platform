@@ -11,7 +11,7 @@ if (!GEMINI_API_KEY) {
 }
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const DEFAULT_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+const DEFAULT_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"];
 const configuredModels = process.env.GEMINI_MODELS
     ? process.env.GEMINI_MODELS.split(",").map((model) => model.trim()).filter(Boolean)
     : [];
@@ -150,5 +150,48 @@ export const chatWithAI = async (req, res) => {
     } catch (error) {
         console.error("AI Chat Error:", error);
         res.status(502).json({ success: false, message: "Chat failed.", error: parseAiError(error) });
+    }
+};
+
+export const generateOutreachHooks = async (req, res) => {
+    try {
+        const { leads } = req.body;
+
+        if (!leads || !Array.isArray(leads) || leads.length === 0) {
+            return res.status(400).json({ success: false, message: "A non-empty array of leads is required." });
+        }
+
+        if (!GEMINI_API_KEY || !genAI) {
+            return res.status(503).json({ success: false, message: "AI service is not configured." });
+        }
+
+        const prompt = `
+      You are a Sales Personalization Expert. For the following list of B2B leads, generate a unique, highly personalized "Cold Outreach Hook" (max 2 sentences) for each lead. 
+      The hook should mention something specific from their data (city, company name, or category) to make it feel human.
+
+      Leads:
+      ${JSON.stringify(leads.slice(0, 10))}
+
+      Response MUST be a JSON array of objects, where each object has:
+      - "leadId": (the index or ID of the lead)
+      - "hook": "The personalized message"
+
+      Only return the JSON.
+    `;
+
+        const { modelUsed, result } = await runWithFallbackModels((model) => model.generateContent(prompt));
+        const response = await result.response;
+        const text = response.text();
+        const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const hooks = JSON.parse(jsonString);
+
+        res.json({
+            success: true,
+            hooks,
+            modelUsed,
+        });
+    } catch (error) {
+        console.error("AI Hooks Error:", error);
+        res.status(502).json({ success: false, message: "Failed to generate hooks.", error: parseAiError(error) });
     }
 };

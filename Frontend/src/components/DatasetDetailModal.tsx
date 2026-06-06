@@ -3,8 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
-import { MapPin, Mail, Phone, Database, ShoppingCart, Download, ChevronDown } from "lucide-react";
+import { MapPin, Mail, Phone, Database, ShoppingCart, Download, ChevronDown, Sparkles, Wand2, Loader2, Copy, Check } from "lucide-react";
 import { Dataset, useDataContext } from "@/contexts/DataContext";
+import { useState } from "react";
+import api from "@/api/api";
+import { toast } from "sonner";
 
 interface DatasetDetailModalProps {
   dataset: Dataset | null;
@@ -16,6 +19,9 @@ interface DatasetDetailModalProps {
 
 const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }: DatasetDetailModalProps) => {
   const { categories, countries } = useDataContext();
+  const [hooks, setHooks] = useState<{ leadId: number; hook: string }[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   if (!dataset) return null;
 
@@ -79,6 +85,34 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
     { key: "city_name", label: "City", width: "minmax(0,0.9fr)" },
     { key: "price", label: "Price", width: "minmax(0,0.7fr)" },
   ];
+ 
+  const generateHooks = async () => {
+    if (!dataset?.sample_file_Data?.length) return;
+    
+    setIsGenerating(true);
+    try {
+      const response = await api.post("/admin/ai/generate-hooks", {
+        leads: dataset.sample_file_Data.slice(0, 5)
+      });
+      
+      if (response.data.success) {
+        setHooks(response.data.hooks);
+        toast.success("AI hooks generated!");
+      }
+    } catch (error: any) {
+      console.error("Hooks generation error:", error);
+      toast.error(error.response?.data?.message || "Failed to generate hooks");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+ 
+  const copyToClipboard = (text: string, id: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.success("Hook copied to clipboard");
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -231,6 +265,81 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
               )}
             </div>
           </Card>
+ 
+          {/* AI Strategic Hooks Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-card-foreground flex items-center gap-2 text-sm lg:text-base">
+                <Sparkles className="w-4 h-4 text-primary" />
+                AI Outreach Hooks
+              </h4>
+              {!hooks.length && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={generateHooks}
+                  disabled={isGenerating}
+                  className="text-xs h-8 text-primary hover:text-primary hover:bg-primary/10"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3 h-3 mr-2" />
+                      Generate Hooks
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+ 
+            {hooks.length > 0 ? (
+              <div className="grid gap-3">
+                {hooks.map((hookData, idx) => {
+                  const lead = dataset.sample_file_Data?.[idx];
+                  return (
+                    <div key={idx} className="group relative rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] uppercase font-bold text-primary/70">
+                          For {lead?.name || `Lead #${idx + 1}`}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => copyToClipboard(hookData.hook, idx)}
+                        >
+                          {copiedId === idx ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                      <p className="text-card-foreground leading-relaxed italic">
+                        "{hookData.hook}"
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Get personalized AI outreach hooks for these leads to increase conversion.
+                </p>
+                {!isGenerating && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={generateHooks}
+                    className="text-xs"
+                  >
+                    Generate Sample Hooks
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
 
 
           {/* Pricing */}
