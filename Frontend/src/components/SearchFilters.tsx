@@ -53,33 +53,33 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
         setAvailableCategories(
           Array.isArray(data?.categories)
             ? data.categories.map((item: { category_id: number; category_name: string }) => ({
-                id: Number(item.category_id),
-                name: item.category_name,
-              }))
+              id: Number(item.category_id),
+              name: item.category_name,
+            }))
             : [],
         );
         setAvailableCountries(
           Array.isArray(data?.countries)
             ? data.countries.map((item: { country_id: number; country_name: string }) => ({
-                id: Number(item.country_id),
-                name: item.country_name,
-              }))
+              id: Number(item.country_id),
+              name: item.country_name,
+            }))
             : [],
         );
         setAvailableStates(
           Array.isArray(data?.states)
             ? data.states.map((item: { state_id: number; state_name: string }) => ({
-                id: Number(item.state_id),
-                name: item.state_name,
-              }))
+              id: Number(item.state_id),
+              name: item.state_name,
+            }))
             : [],
         );
         setAvailableCities(
           Array.isArray(data?.cities)
             ? data.cities.map((item: { city_id: number; city_name: string }) => ({
-                id: Number(item.city_id),
-                name: item.city_name,
-              }))
+              id: Number(item.city_id),
+              name: item.city_name,
+            }))
             : [],
         );
       } catch (error) {

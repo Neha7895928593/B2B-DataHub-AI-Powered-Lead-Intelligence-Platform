@@ -62,20 +62,23 @@ export const getCategories = async () => {
 };
 
 /// Countries
-export const getCountries = async () => {
-  const res = await api.get("/countries");
+export const getCountries = async (categoryId?: string) => {
+  const query = categoryId ? `?categoryId=${categoryId}` : "";
+  const res = await api.get(`/countries${query}`);
   return res.data;
 };
 
 /// States
-export const getStates = async (country: string) => {
-  const res = await api.get(`/states?countryId=${country}`);
+export const getStates = async (country: string, categoryId?: string) => {
+  const categoryParam = categoryId ? `&categoryId=${categoryId}` : "";
+  const res = await api.get(`/states?countryId=${country}${categoryParam}`);
   return res.data;
 };
 
 /// Cities
-export const getCities = async (state: string) => {
-  const res = await api.get(`/cities?stateId=${state}`);
+export const getCities = async (state: string, categoryId?: string) => {
+  const categoryParam = categoryId ? `&categoryId=${categoryId}` : "";
+  const res = await api.get(`/cities?stateId=${state}${categoryParam}`);
   return res.data;
 };
 

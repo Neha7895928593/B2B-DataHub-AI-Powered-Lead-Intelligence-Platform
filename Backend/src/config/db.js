@@ -82,6 +82,11 @@ const createCoreDatasetTables = async (client) => {
     )
   `);
 
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_category_name_upper ON category (UPPER(category_name))`);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_country_name_upper ON country (UPPER(country_name))`);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_state_name_country_upper ON state (UPPER(state_name), country_id)`);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_city_name_state_upper ON city (UPPER(city_name), state_id)`);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS dataset_source (
       source_id SERIAL PRIMARY KEY,

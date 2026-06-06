@@ -4,6 +4,36 @@ import path from "path";
 import XLSX from "xlsx";
 import pool from "../../config/db.js";
 
+const countryNormalizationMap = {
+  "UAE": "United Arab Emirates",
+  "U.A.E.": "United Arab Emirates",
+  "USA": "United States",
+  "U.S.A.": "United States",
+  "US": "United States",
+  "UK": "United Kingdom",
+  "U.K.": "United Kingdom",
+  "GB": "United Kingdom",
+  "INDIA": "India",
+};
+
+const stateNormalizationMap = {
+  "UP": "Uttar Pradesh",
+  "U.P.": "Uttar Pradesh",
+  "MH": "Maharashtra",
+  "DL": "Delhi",
+  "NY": "New York",
+  "CA": "California",
+  "TX": "Texas",
+  "FL": "Florida",
+};
+
+const normalizeLocationName = (name, map) => {
+  if (!name || typeof name !== 'string') return name;
+  const trimmed = name.trim();
+  const upper = trimmed.toUpperCase();
+  return map[upper] || trimmed;
+};
+
 const DATASETS_CACHE_TTL_MS = 15000;
 const datasetsCache = new Map();
 
@@ -152,39 +182,44 @@ export const uploadDataFile = async (req, res) => {
       // const emailValue = row[fieldMappings.email] || row.email;
       // const rowPriceValue = row[fieldMappings.price] || row.price || price || null;
 
+      // Normalize location names
+      const normalizedCountry = normalizeLocationName(countryValue, countryNormalizationMap);
+      const normalizedState = normalizeLocationName(stateValue, stateNormalizationMap);
+      const normalizedCity = cityValue.trim();
+
       // --- Insert/find category
       const categoryResult = await client.query(
         `INSERT INTO category (category_name) VALUES ($1)
-     ON CONFLICT (category_name) DO UPDATE SET category_name=EXCLUDED.category_name
+     ON CONFLICT (UPPER(category_name)) DO UPDATE SET category_name=EXCLUDED.category_name
      RETURNING category_id`,
-        [categoryValue]
+        [categoryValue.trim()]
       );
       const categoryId = categoryResult.rows[0].category_id;
 
       // --- Insert/find country
       const countryResult = await client.query(
         `INSERT INTO country (country_name) VALUES ($1)
-     ON CONFLICT (country_name) DO UPDATE SET country_name=EXCLUDED.country_name
+     ON CONFLICT (UPPER(country_name)) DO UPDATE SET country_name=EXCLUDED.country_name
      RETURNING country_id`,
-        [countryValue]
+        [normalizedCountry]
       );
       const countryId = countryResult.rows[0].country_id;
 
       // --- Insert/find state
       const stateResult = await client.query(
         `INSERT INTO state (state_name, country_id) VALUES ($1, $2)
-     ON CONFLICT (state_name, country_id) DO UPDATE SET state_name=EXCLUDED.state_name
+     ON CONFLICT (UPPER(state_name), country_id) DO UPDATE SET state_name=EXCLUDED.state_name
      RETURNING state_id`,
-        [stateValue, countryId]
+        [normalizedState, countryId]
       );
       const stateId = stateResult.rows[0].state_id;
 
       // --- Insert/find city
       const cityResult = await client.query(
         `INSERT INTO city (city_name, state_id) VALUES ($1, $2)
-     ON CONFLICT (city_name, state_id) DO UPDATE SET city_name=EXCLUDED.city_name
+     ON CONFLICT (UPPER(city_name), state_id) DO UPDATE SET city_name=EXCLUDED.city_name
      RETURNING city_id`,
-        [cityValue, stateId]
+        [normalizedCity, stateId]
       );
       const cityId = cityResult.rows[0].city_id;
 
@@ -474,10 +509,23 @@ export const getCategories = async (req, res) => {
 
 export const getCountries = async (req, res) => {
   try {
-    const result = await pool.query(`SELECT country_id, country_name FROM country ORDER BY country_name`);
+    const { categoryId } = req.query;
+    let query = `
+      SELECT DISTINCT co.country_id, co.country_name 
+      FROM country co
+      JOIN dataset d ON d.country_id = co.country_id
+    `;
+    const params = [];
+    if (categoryId) {
+      query += ` WHERE d.category_id = $1 `;
+      params.push(categoryId);
+    }
+    query += ` ORDER BY co.country_name`;
+
+    const result = await pool.query(query, params);
     res.json({ success: true, countries: result.rows });
   } catch (error) {
-    console.error(error);
+    console.error("Error in getCountries:", error);
     res.status(500).json({ success: false });
   }
 };
@@ -485,17 +533,28 @@ export const getCountries = async (req, res) => {
 // Get states by country
 export const getStates = async (req, res) => {
   try {
-    const { countryId } = req.query;
+    const { countryId, categoryId } = req.query;
     if (!countryId) {
       return res.status(400).json({ success: false, message: "countryId is required" });
     }
-    const result = await pool.query(
-      `SELECT state_id, state_name FROM state WHERE country_id=$1 ORDER BY state_name`,
-      [countryId]
-    );
+
+    let query = `
+      SELECT DISTINCT s.state_id, s.state_name 
+      FROM state s
+      JOIN dataset d ON d.state_id = s.state_id
+      WHERE s.country_id = $1
+    `;
+    const params = [countryId];
+    if (categoryId) {
+      query += ` AND d.category_id = $2 `;
+      params.push(categoryId);
+    }
+    query += ` ORDER BY s.state_name`;
+
+    const result = await pool.query(query, params);
     res.json({ success: true, states: result.rows });
   } catch (error) {
-    console.error(error);
+    console.error("Error in getStates:", error);
     res.status(500).json({ success: false });
   }
 };
@@ -503,14 +562,28 @@ export const getStates = async (req, res) => {
 // Get cities by state
 export const getCities = async (req, res) => {
   try {
-    const { stateId } = req.query;
-    const result = await pool.query(
-      `SELECT city_id, city_name FROM city WHERE state_id=$1 ORDER BY city_name`,
-      [stateId]
-    );
+    const { stateId, categoryId } = req.query;
+    if (!stateId) {
+      return res.status(400).json({ success: false, message: "stateId is required" });
+    }
+
+    let query = `
+      SELECT DISTINCT ci.city_id, ci.city_name 
+      FROM city ci
+      JOIN dataset d ON d.city_id = ci.city_id
+      WHERE ci.state_id = $1
+    `;
+    const params = [stateId];
+    if (categoryId) {
+      query += ` AND d.category_id = $2 `;
+      params.push(categoryId);
+    }
+    query += ` ORDER BY ci.city_name`;
+
+    const result = await pool.query(query, params);
     res.json({ success: true, cities: result.rows });
   } catch (error) {
-    console.error(error);
+    console.error("Error in getCities:", error);
     res.status(500).json({ success: false });
   }
 };
@@ -771,24 +844,24 @@ export const deleteDatasetSource = async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
-   
+
     await client.query('BEGIN');
 
     await client.query('DELETE FROM dataset WHERE source_id = $1', [id]);
-    
+
     await client.query('DELETE FROM dataset_source WHERE source_id = $1', [id]);
 
     await client.query('COMMIT');
     clearDatasetsCache();
-    
+
     res.json({ success: true, message: "Dataset source and all related leads deleted successfully." });
   } catch (error) {
-  
+
     await client.query('ROLLBACK');
     console.error("Error deleting dataset source:", error);
     res.status(500).json({ success: false, message: "Failed to delete dataset source." });
   } finally {
-   
+
     client.release();
   }
 };

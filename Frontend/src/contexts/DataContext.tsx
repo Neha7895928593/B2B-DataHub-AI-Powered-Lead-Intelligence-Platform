@@ -54,44 +54,44 @@ export type Dataset = {
   filtered_total_records?: number;
   filtered_email_count?: number;
   filtered_phone_count?: number;
-  view_record?:RecordItem[];
+  view_record?: RecordItem[];
 };
 
 
 
 export type Category = {
- category_id?: string,
-  category_name?:string
+  category_id?: string,
+  category_name?: string
 };
 
 
 export type Country = {
- country_id?: string,
-  country_name?:string
+  country_id?: string,
+  country_name?: string
 };
 
 export type State = {
- state_id?: string,
-  state_name?:string
+  state_id?: string,
+  state_name?: string
 };
 
 export type City = {
- city_id?: string,
-  city_name?:string
+  city_id?: string,
+  city_name?: string
 };
 
 type DataContextType = {
   countries: Country[];
-  states:State[];
+  states: State[];
   cities: City[];
   categories: Category[];
   datasets: Dataset[];
   isDatasetsLoading: boolean;
   datasetsError: string | null;
   // datasetRecords: DatasetRecord[];
-  fetchCountries: () => Promise<void>;
-  fetchStates: (country:string ) => Promise<void>;
-  fetchCities: ( state:string) => Promise<void>;
+  fetchCountries: (categoryId?: string) => Promise<void>;
+  fetchStates: (country: string, categoryId?: string) => Promise<void>;
+  fetchCities: (state: string, categoryId?: string) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchDatasets: (filters: { category?: string; country?: string; state?: string; city?: string }) => Promise<void>;
   // fetchDatasetRecords: (id: string) => Promise<void>;
@@ -110,9 +110,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   // const [datasetRecords, setDatasetRecords] = useState<DatasetRecord[]>([]);
 
   //  Fetch Countries
-  const fetchCountries = useCallback(async () => {
+  const fetchCountries = useCallback(async (categoryId?: string) => {
     try {
-      const data = await getCountries();
+      const data = await getCountries(categoryId);
       setCountries(data.countries);
     } catch (error) {
       console.error("Error fetching countries:", error);
@@ -120,9 +120,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   //  Fetch States
-  const fetchStates = useCallback(async (country: string) => {
+  const fetchStates = useCallback(async (country: string, categoryId?: string) => {
     try {
-      const data = await getStates(country);
+      const data = await getStates(country, categoryId);
       setStates(data.states);
     } catch (error) {
       console.error("Error fetching states:", error);
@@ -130,9 +130,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   //  Fetch Cities
-  const fetchCities = useCallback(async (state: string) => {
+  const fetchCities = useCallback(async (state: string, categoryId?: string) => {
     try {
-      const data = await getCities(state);
+      const data = await getCities(state, categoryId);
       setCities(data.cities);
     } catch (error) {
       console.error("Error fetching cities:", error);
