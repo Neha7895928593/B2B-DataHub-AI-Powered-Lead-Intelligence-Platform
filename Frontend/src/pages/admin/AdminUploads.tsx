@@ -78,6 +78,45 @@ const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
   </Label>
 );
 
+const formatDetailValue = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") return "-";
+  if (Array.isArray(value)) return value.map((item) => formatDetailValue(item)).join(", ");
+  if (typeof value === "boolean" || typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+};
+
+const normalizeFieldKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/gi, "");
+
+const getRowDetails = (row: Record<string, unknown>) => {
+  const baseEntries: Array<{ key: string; value: unknown; section: "base" }> = Object.entries(row)
+    .filter(([key]) => key !== "extra_fields")
+    .map(([key, value]) => ({ key, value, section: "base" }));
+
+  const extraFieldsRaw = row.extra_fields;
+  const extraFields =
+    typeof extraFieldsRaw === "string"
+      ? (() => {
+          try {
+            const parsed = JSON.parse(extraFieldsRaw);
+            return typeof parsed === "object" && parsed !== null ? parsed : {};
+          } catch {
+            return {};
+          }
+        })()
+      : (typeof extraFieldsRaw === "object" && extraFieldsRaw !== null && !Array.isArray(extraFieldsRaw))
+          ? extraFieldsRaw as Record<string, unknown>
+          : {};
+
+  const baseKeys = new Set(baseEntries.map((item) => normalizeFieldKey(item.key)));
+  const extraEntries: Array<{ key: string; value: unknown; section: "custom" }> = Object.entries(extraFields)
+    .filter(([key]) => key && !baseKeys.has(normalizeFieldKey(key)))
+    .map(([key, value]) => ({ key, value, section: "custom" }));
+
+  return [...baseEntries, ...extraEntries];
+};
+
 export default function AdminUploads() {
   const { toast } = useToast();
 
@@ -551,10 +590,14 @@ export default function AdminUploads() {
           </DialogHeader>
           {selectedRowDetails && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto">
-              {Object.entries(selectedRowDetails).map(([key, value]) => (
+              {getRowDetails(selectedRowDetails).map(({ key, value, section }) => (
                 <div key={key} className="border-b pb-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">{key.replace(/_/g, ' ')}</p>
-                  <p className="text-sm font-medium">{String(value || '-')}</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase">
+                    {key.replace(/_/g, " ")}
+                  </p>
+                  <p className={`text-sm ${section === "base" ? "font-medium" : "text-primary"}`}>
+                    {formatDetailValue(value)}
+                  </p>
                 </div>
               ))}
             </div>
