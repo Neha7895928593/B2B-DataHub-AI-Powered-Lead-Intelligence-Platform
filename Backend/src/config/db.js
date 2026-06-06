@@ -34,6 +34,193 @@ const seedAdminAccount = async (client) => {
   return adminEmail;
 };
 
+const hasColumn = async (client, table, column) => {
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = $1
+         AND column_name = $2
+     ) AS exists`,
+    [table, column],
+  );
+
+  return result.rows[0].exists;
+};
+
+const createCoreDatasetTables = async (client) => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS category (
+      category_id SERIAL PRIMARY KEY,
+      category_name VARCHAR(255) UNIQUE NOT NULL
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS country (
+      country_id SERIAL PRIMARY KEY,
+      country_name VARCHAR(255) UNIQUE NOT NULL
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS state (
+      state_id SERIAL PRIMARY KEY,
+      state_name VARCHAR(255) NOT NULL,
+      country_id INTEGER REFERENCES country(country_id) ON DELETE CASCADE,
+      UNIQUE (state_name, country_id)
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS city (
+      city_id SERIAL PRIMARY KEY,
+      city_name VARCHAR(255) NOT NULL,
+      state_id INTEGER REFERENCES state(state_id) ON DELETE CASCADE,
+      UNIQUE (city_name, state_id)
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS dataset_source (
+      source_id SERIAL PRIMARY KEY,
+      source_name VARCHAR(255),
+      description TEXT,
+      proof_attachment VARCHAR(255),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS dataset (
+      dataset_id SERIAL PRIMARY KEY,
+      source_id INTEGER REFERENCES dataset_source(source_id) ON DELETE CASCADE,
+      category_id INTEGER REFERENCES category(category_id),
+      country_id INTEGER REFERENCES country(country_id),
+      state_id INTEGER REFERENCES state(state_id),
+      city_id INTEGER REFERENCES city(city_id),
+      name VARCHAR(255),
+      address TEXT,
+      phone VARCHAR(50),
+      email VARCHAR(255),
+      price NUMERIC(10, 2),
+      extra_fields JSONB,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
+
+const ensureOrdersTable = async (client) => {
+  const hasOrdersTable = await client.query("SELECT to_regclass('public.orders') IS NOT NULL AS exists");
+  if (!hasOrdersTable.rows[0].exists) {
+    await client.query(`
+      CREATE TABLE orders (
+        order_id SERIAL PRIMARY KEY,
+        dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
+        customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        payment_method VARCHAR(50) NOT NULL,
+        payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        dataset_label VARCHAR(255),
+        download_link TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return;
+  }
+
+  const hasOrderId = await hasColumn(client, "orders", "order_id");
+  if (!hasOrderId) {
+    console.warn("Legacy orders table detected without order_id. Rebuilding schema to continue deployment.");
+    await client.query("DROP TABLE IF EXISTS transactions");
+    await client.query("ALTER TABLE orders RENAME TO orders_legacy");
+
+    try {
+      await client.query(`
+        CREATE TABLE orders (
+          order_id SERIAL PRIMARY KEY,
+          dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
+          customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
+          amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          payment_method VARCHAR(50) NOT NULL,
+          payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          dataset_label VARCHAR(255),
+          download_link TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      const hasLegacyId = await hasColumn(client, "orders_legacy", "id");
+      if (hasLegacyId) {
+        await client.query(`
+          INSERT INTO orders (order_id, dataset_id, customer_id, amount, tax, total_amount, payment_method, payment_status, dataset_label, download_link, created_at)
+          SELECT id, dataset_id, customer_id, COALESCE(amount, 0), COALESCE(tax, 0), COALESCE(total_amount, 0), payment_method, payment_status, dataset_label, download_link, created_at
+          FROM orders_legacy
+        `);
+      } else {
+        const hasLegacyOrderId = await hasColumn(client, "orders_legacy", "order_id");
+        if (hasLegacyOrderId) {
+          await client.query(`
+            INSERT INTO orders (order_id, dataset_id, customer_id, amount, tax, total_amount, payment_method, payment_status, dataset_label, download_link, created_at)
+            SELECT order_id, dataset_id, customer_id, COALESCE(amount, 0), COALESCE(tax, 0), COALESCE(total_amount, 0), payment_method, payment_status, dataset_label, download_link, created_at
+            FROM orders_legacy
+          `);
+        }
+      }
+    } finally {
+      await client.query("DROP TABLE IF EXISTS orders_legacy");
+    }
+  }
+};
+
+const ensureTransactionsTable = async (client) => {
+  const hasTransactions = await client.query("SELECT to_regclass('public.transactions') IS NOT NULL AS exists");
+  if (!hasTransactions.rows[0].exists) {
+    await client.query(`
+      CREATE TABLE transactions (
+        transaction_id SERIAL PRIMARY KEY,
+        order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        type VARCHAR(50) NOT NULL DEFAULT 'sale',
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        payment_method VARCHAR(50) NOT NULL,
+        gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
+        download_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return;
+  }
+
+  const hasTransactionOrderId = await hasColumn(client, "transactions", "order_id");
+  if (!hasTransactionOrderId) {
+    console.warn("Legacy transactions table detected without order_id. Rebuilding transactions table.");
+    await client.query("DROP TABLE transactions");
+    await client.query(`
+      CREATE TABLE transactions (
+        transaction_id SERIAL PRIMARY KEY,
+        order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        type VARCHAR(50) NOT NULL DEFAULT 'sale',
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        payment_method VARCHAR(50) NOT NULL,
+        gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
+        download_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  }
+};
+
 export const initializeDatabase = async () => {
   const client = await pool.connect();
 
@@ -61,21 +248,8 @@ export const initializeDatabase = async () => {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS orders (
-        order_id SERIAL PRIMARY KEY,
-        dataset_id INTEGER REFERENCES dataset(dataset_id) ON DELETE SET NULL,
-        customer_id INTEGER NOT NULL REFERENCES customers(customer_id) ON DELETE CASCADE,
-        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        tax NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        payment_method VARCHAR(50) NOT NULL,
-        payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        dataset_label VARCHAR(255),
-        download_link TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    await createCoreDatasetTables(client);
+    await ensureOrdersTable(client);
     await client.query(`
       ALTER TABLE customers
       ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL;
@@ -88,21 +262,7 @@ export const initializeDatabase = async () => {
       ALTER TABLE orders
       ADD COLUMN IF NOT EXISTS dataset_context JSONB;
     `);
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        transaction_id SERIAL PRIMARY KEY,
-        order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
-        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-        type VARCHAR(50) NOT NULL DEFAULT 'sale',
-        status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        payment_method VARCHAR(50) NOT NULL,
-        gateway VARCHAR(50) NOT NULL DEFAULT 'manual',
-        download_count INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    await ensureTransactionsTable(client);
     await client.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (
         reset_id SERIAL PRIMARY KEY,
