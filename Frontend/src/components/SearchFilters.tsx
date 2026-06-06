@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,11 +25,10 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
     countries,
     states,
     cities,
-    categories,
     fetchCountries,
-    fetchCategories,
     fetchStates,
     fetchCities,
+    datasets,
   } = useDataContext();
 
   const [category, setCategory] = useState("");
@@ -40,8 +39,25 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
   // Fetch initial countries & categories
   useEffect(() => {
     fetchCountries();
-    fetchCategories();
-  }, [fetchCountries, fetchCategories]);
+  }, [fetchCountries]);
+
+  const availableCategories = useMemo(() => {
+    const seen = new Map<string, { category_id: number; category_name: string }>();
+
+    for (const dataset of datasets) {
+      const id = Number(dataset.category_id);
+      const name = dataset.category?.trim() || "Unknown";
+
+      if (!Number.isFinite(id) || !name) continue;
+      if (!seen.has(String(id))) {
+        seen.set(String(id), { category_id: id, category_name: name });
+      }
+    }
+
+    return Array.from(seen.values()).sort((a, b) =>
+      a.category_name.localeCompare(b.category_name),
+    );
+  }, [datasets]);
 
   // Fetch states when country changes
   useEffect(() => {
@@ -107,7 +123,7 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All categories</SelectItem>
-            {categories.map((cat) => (
+            {availableCategories.map((cat) => (
               <SelectItem key={cat.category_id} value={String(cat.category_id)}>
                 {cat.category_name}
               </SelectItem>
