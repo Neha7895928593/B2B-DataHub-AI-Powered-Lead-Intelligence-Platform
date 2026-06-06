@@ -70,3 +70,5 @@ temp/
 # Uploads / generated runtime data
 uploads/
 Backend/uploads/
+
+scripts/record-demo.cjs

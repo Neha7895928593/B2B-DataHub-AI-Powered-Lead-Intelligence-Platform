@@ -182,11 +182,11 @@ const PurchaseModal = ({ dataset, isOpen, onClose }: PurchaseModalProps) => {
               </div>
               <Separator className="my-3" />
               <div className="space-y-2 text-xs lg:text-sm">
-                <div className="flex justify-between"><span>Dataset Price:</span><span>${price}</span></div>
-                <div className="flex justify-between"><span>Tax (10%):</span><span>${tax}</span></div>
+                <div className="flex justify-between"><span>Dataset Price:</span><span>₹{price}</span></div>
+                <div className="flex justify-between"><span>Tax (10%):</span><span>₹{tax}</span></div>
                 <Separator className="my-2" />
                 <div className="flex justify-between font-medium text-sm lg:text-base">
-                  <span>Total:</span><span>${total}</span>
+                  <span>Total:</span><span>₹{total}</span>
                 </div>
               </div>
             </div>
