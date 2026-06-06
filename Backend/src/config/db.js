@@ -160,7 +160,7 @@ const resetTable = async (client, tableName, createSql, reason = "") => {
     console.warn(`${reason} Recreating "${tableName}" table.`);
   }
   await client.query(`DROP TABLE IF EXISTS "${tableName}" CASCADE`);
-  await client.query(`CREATE TABLE ${createSql}`);
+  await client.query(createSql);
 };
 
 const ensureOrdersTable = async (client) => {
@@ -171,7 +171,7 @@ const ensureOrdersTable = async (client) => {
 
   const hasOrdersTable = await client.query("SELECT to_regclass('public.orders') IS NOT NULL AS exists");
   if (!hasOrdersTable.rows[0].exists) {
-    await client.query(`CREATE TABLE ${createOrdersTable}`);
+    await client.query(createOrdersTable);
     return;
   }
 
@@ -201,7 +201,7 @@ const ensureOrdersTable = async (client) => {
 const ensureTransactionsTable = async (client) => {
   const hasTransactions = await client.query("SELECT to_regclass('public.transactions') IS NOT NULL AS exists");
   if (!hasTransactions.rows[0].exists) {
-    await client.query(`CREATE TABLE ${createTransactionsTable}`);
+    await client.query(createTransactionsTable);
     return;
   }
 
