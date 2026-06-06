@@ -37,6 +37,11 @@ export const chatWithAI = async (payload: { message: string }) => {
   return res.data;
 };
 
+export const generateOutreachHooksAI = async (payload: { leads: any[] }) => {
+  const res = await api.post("/ai/generate-hooks", payload);
+  return res.data;
+};
+
 /// Dataset Summary
 export const getDatasetsSummary = async (filters: { category?: string; country?: string; state?: string; city?: string }) => {
   const query = new URLSearchParams(filters).toString();

@@ -7,6 +7,7 @@ import { MapPin, Mail, Phone, Database, ShoppingCart, Download, ChevronDown, Spa
 import { Dataset, useDataContext } from "@/contexts/DataContext";
 import { useState } from "react";
 import api from "@/api/api";
+import { generateOutreachHooksAI } from "@/api/apiHub";
 import { toast } from "sonner";
 
 interface DatasetDetailModalProps {
@@ -91,12 +92,12 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
     
     setIsGenerating(true);
     try {
-      const response = await api.post("/admin/ai/generate-hooks", {
+      const data = await generateOutreachHooksAI({
         leads: dataset.sample_file_Data.slice(0, 5)
       });
       
-      if (response.data.success) {
-        setHooks(response.data.hooks);
+      if (data.success) {
+        setHooks(data.hooks);
         toast.success("AI hooks generated!");
       }
     } catch (error: any) {
