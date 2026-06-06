@@ -187,8 +187,16 @@ export const uploadDataFile = async (req, res) => {
 
       // --- Check if dataset exists
       const existing = await client.query(
-        "SELECT * FROM dataset WHERE email=$1 AND phone=$2 ",
-        [emailValue, phoneValue]
+        `SELECT *
+         FROM dataset
+         WHERE email = $1
+           AND phone = $2
+           AND category_id = $3
+           AND country_id = $4
+           AND COALESCE(state_id, 0) = COALESCE($5, 0)
+           AND COALESCE(city_id, 0) = COALESCE($6, 0)
+         LIMIT 1`,
+        [emailValue, phoneValue, categoryId, countryId, stateId, cityId]
       );
 
       if (existing.rows.length > 0) {
@@ -196,10 +204,6 @@ export const uploadDataFile = async (req, res) => {
         const extraChanged = JSON.stringify(existingRow.extra_fields || {}) !== JSON.stringify(extraFields);
 
         if (
-          existingRow.category_id !== categoryId ||
-          existingRow.country_id !== countryId ||
-          existingRow.state_id !== stateId ||
-          existingRow.city_id !== cityId ||
           existingRow.address !== addressValue ||
           Number(existingRow.price) !== Number(rowPriceValue) ||
           extraChanged
