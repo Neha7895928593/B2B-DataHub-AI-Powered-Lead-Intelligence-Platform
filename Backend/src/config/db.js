@@ -130,6 +130,22 @@ const createCoreDatasetTables = async (client) => {
     CREATE INDEX IF NOT EXISTS idx_dataset_source
       ON dataset (source_id)
   `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_email
+      ON dataset (email)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_phone
+      ON dataset (phone)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_email_phone
+      ON dataset (email, phone)
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_dataset_created_at_desc
+      ON dataset (created_at DESC)
+  `);
 };
 
 const createOrdersTable = `
