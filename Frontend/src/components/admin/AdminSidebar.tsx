@@ -1,31 +1,23 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import logo from "../../assist/navbarLogo.png"
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
-  FileText,
   ShoppingCart,
   CreditCard,
   Users,
   BarChart3,
   Settings,
-  Upload,
-  Download,
   Database,
-  UserCheck,
-  Globe,
   TrendingUp,
 } from "lucide-react";
 
@@ -69,17 +61,21 @@ export function AdminSidebar() {
         <div className="p-4 border-b border-sidebar-border">
           {!collapsed ? (
             <div className="flex items-center gap-3">
-             <div className="w-8 h-8  flex items-center justify-center">
-              <img  src={logo} className="w-8 h-8 text-white" />
-            </div>
+              <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20">
+                <Database className="w-5 h-5 text-primary" />
+              </div>
               <div>
-                <h2 className="text-lg font-bold text-sidebar-foreground">DataHub</h2>
-                {/* <p className="text-xs text-sidebar-foreground/60">Admin Panel</p> */}
+                <h2 className="text-lg font-black text-sidebar-foreground tracking-tight leading-none">
+                  B2B DATA<span className="text-primary italic">HUB</span>
+                </h2>
+                <span className="block text-[10px] text-sidebar-foreground/60 font-bold uppercase tracking-widest mt-0.5">
+                  Intelligence Engine
+                </span>
               </div>
             </div>
           ) : (
-            <div className="w-8 h-8 bg-sidebar-primary rounded-md flex items-center justify-center mx-auto">
-              <FileText className="w-4 h-4 text-sidebar-primary-foreground" />
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mx-auto border border-primary/20">
+              <Database className="w-4 h-4 text-primary" />
             </div>
           )}
         </div>
