@@ -23,7 +23,7 @@ export function AdminLayout() {
 
   const handleLogout = () => {
     logout();
-    navigate("/admin", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (
