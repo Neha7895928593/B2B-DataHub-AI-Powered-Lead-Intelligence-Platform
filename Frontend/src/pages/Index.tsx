@@ -318,7 +318,7 @@ const Index = () => {
               </p>
             </div>
           ) : (
-            <>
+            <div className="relative">
               <DatasetTable
                 datasets={paginatedDatasets}
                 currentPage={currentPage}
@@ -330,11 +330,16 @@ const Index = () => {
                 onDownload={handleDownloadSample}
               />
               {isDatasetsLoading && datasets.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2 text-right">
-                  Updating data from server...
-                </p>
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]">
+                  <div className="flex items-center gap-3 rounded-full border border-border bg-card px-4 py-2 shadow-sm">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span className="text-sm text-muted-foreground">
+                      Updating dataset list...
+                    </span>
+                  </div>
+                </div>
               )}
-            </>
+            </div>
             )}
         </div>
       </div>

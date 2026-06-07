@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Filter } from "lucide-react";
+import { Filter, Loader2 } from "lucide-react";
 import { getFilterOptions } from "@/api/apiHub";
 
 interface SearchFiltersProps {
@@ -35,11 +35,13 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
   const [availableCountries, setAvailableCountries] = useState<FilterOption[]>([]);
   const [availableStates, setAvailableStates] = useState<FilterOption[]>([]);
   const [availableCities, setAvailableCities] = useState<FilterOption[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
 
   useEffect(() => {
     let active = true;
 
     const loadOptions = async () => {
+      setIsLoadingOptions(true);
       try {
         const data = await getFilterOptions({
           category,
@@ -84,6 +86,10 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
         );
       } catch (error) {
         console.error("Failed to fetch filter options:", error);
+      } finally {
+        if (active) {
+          setIsLoadingOptions(false);
+        }
       }
     };
 
@@ -106,17 +112,24 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
       newCountry = "";
       newState = "";
       newCity = "";
+      setAvailableCountries([]);
+      setAvailableStates([]);
+      setAvailableCities([]);
     } else if (type === "country") {
       newCountry = normalizedValue;
       newState = "";
       newCity = "";
+      setAvailableStates([]);
+      setAvailableCities([]);
     } else if (type === "state") {
       newState = normalizedValue;
       newCity = "";
+      setAvailableCities([]);
     } else if (type === "city") {
       newCity = normalizedValue;
     }
 
+    setIsLoadingOptions(true);
     setCategory(newCategory);
     setCountry(newCountry);
     setState(newState);
@@ -147,10 +160,17 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
         </h3>
       </div>
 
+      {isLoadingOptions && (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          <span>Syncing filter options from server...</span>
+        </div>
+      )}
+
       <div className="space-y-2 lg:space-y-3">
         <Select value={category} onValueChange={(value) => handleFilterChange("category", value)}>
           <SelectTrigger className="w-full h-9 lg:h-10 text-xs lg:text-sm">
-            <SelectValue placeholder="All categories" />
+            <SelectValue placeholder={isLoadingOptions && !category ? "Loading categories..." : "All categories"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All categories</SelectItem>
@@ -164,7 +184,7 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
 
         <Select value={country} onValueChange={(value) => handleFilterChange("country", value)}>
           <SelectTrigger className="w-full h-9 lg:h-10 text-xs lg:text-sm">
-            <SelectValue placeholder="All countries" />
+            <SelectValue placeholder={isLoadingOptions && !country ? "Loading countries..." : "All countries"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All countries</SelectItem>
@@ -176,9 +196,9 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
           </SelectContent>
         </Select>
 
-        <Select value={state} onValueChange={(value) => handleFilterChange("state", value)}>
+        <Select value={state} onValueChange={(value) => handleFilterChange("state", value)} disabled={!country || isLoadingOptions}>
           <SelectTrigger className="w-full h-9 lg:h-10 text-xs lg:text-sm">
-            <SelectValue placeholder="All states" />
+            <SelectValue placeholder={!country ? "Select country first" : isLoadingOptions && !state ? "Loading states..." : "All states"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All states</SelectItem>
@@ -190,9 +210,9 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
           </SelectContent>
         </Select>
 
-        <Select value={city} onValueChange={(value) => handleFilterChange("city", value)}>
+        <Select value={city} onValueChange={(value) => handleFilterChange("city", value)} disabled={!state || isLoadingOptions}>
           <SelectTrigger className="w-full h-9 lg:h-10 text-xs lg:text-sm">
-            <SelectValue placeholder="All cities" />
+            <SelectValue placeholder={!state ? "Select state first" : isLoadingOptions && !city ? "Loading cities..." : "All cities"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All cities</SelectItem>
@@ -208,8 +228,16 @@ const SearchFilters = ({ onFilterChange }: SearchFiltersProps) => {
           variant="outline"
           className="w-full h-9 lg:h-10 text-xs lg:text-sm font-medium hover:bg-muted"
           onClick={handleClearFilters}
+          disabled={isLoadingOptions}
         >
-          Clear All Filters
+          {isLoadingOptions ? (
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              Refreshing...
+            </>
+          ) : (
+            "Clear All Filters"
+          )}
         </Button>
 
         <Button className="w-full h-9 lg:h-10 bg-primary hover:bg-primary/90 text-primary-foreground text-xs lg:text-sm font-medium">
