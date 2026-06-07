@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Upload, FileText, X, Eye, Trash2, Plus, Loader2, Download, Mail, Phone, ChevronRight, History, FilePlus, Settings2, TableProperties, Sparkles, BrainCircuit, Target, ShieldCheck, Zap } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getFriendlyAiErrorMessage } from "@/lib/aiError";
 
 
 interface UploadedFile {
@@ -467,31 +468,14 @@ export default function AdminUploads() {
         return;
       }
       toast({
-        title: "AI Analysis Failed",
+        title: "AI insights unavailable",
         description: result.error || result.message || "AI service returned an unexpected response.",
         variant: "destructive",
       });
     } catch (error) {
-      const message =
-        ((error as {
-          response?: {
-            data?: {
-              error?: string;
-              message?: string;
-            };
-          };
-        })?.response?.data?.error ||
-        (error as {
-          response?: {
-            data?: {
-              error?: string;
-              message?: string;
-            };
-          };
-        })?.response?.data?.message) ||
-        "Could not connect to AI services.";
+      const message = getFriendlyAiErrorMessage(error, "AI insights are temporarily unavailable.");
       toast({
-        title: "AI Analysis Failed",
+        title: "AI insights unavailable",
         description: message,
         variant: "destructive",
       });

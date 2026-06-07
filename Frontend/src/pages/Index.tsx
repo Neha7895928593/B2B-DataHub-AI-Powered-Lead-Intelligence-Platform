@@ -11,6 +11,7 @@ import PurchaseModal from "@/components/PurchaseModal";
 import { useToast } from "@/hooks/use-toast";
 import { Dataset, useDataContext } from "@/contexts/DataContext";
 import { chatWithAI } from "@/api/apiHub";
+import { getFriendlyAiErrorMessage } from "@/lib/aiError";
 
 const normalizeExtraFields = (value: unknown) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -225,14 +226,11 @@ const Index = () => {
       } else {
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: res.error || "Sorry, I'm having trouble connecting right now. Please try again."
+          content: getFriendlyAiErrorMessage(res.error || res.message, "AI assistant is temporarily unavailable.")
         }]);
       }
     } catch (error) {
-      const msg =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        "Sorry, I'm having trouble connecting right now. Please try again.";
+      const msg = getFriendlyAiErrorMessage(error, "AI assistant is temporarily unavailable.");
       setChatMessages(prev => [...prev, { role: 'assistant', content: String(msg) }]);
     } finally {
       setIsChatLoading(false);

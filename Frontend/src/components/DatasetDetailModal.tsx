@@ -9,6 +9,7 @@ import { useState } from "react";
 import api from "@/api/api";
 import { generateOutreachHooksAI } from "@/api/apiHub";
 import { toast } from "sonner";
+import { getFriendlyAiErrorMessage } from "@/lib/aiError";
 
 interface DatasetDetailModalProps {
   dataset: Dataset | null;
@@ -102,7 +103,7 @@ const DatasetDetailModal = ({ dataset, isOpen, onClose, onPurchase, onDownload }
       }
     } catch (error: any) {
       console.error("Hooks generation error:", error);
-      toast.error(error.response?.data?.message || "Failed to generate hooks");
+      toast.error(getFriendlyAiErrorMessage(error, "AI hooks are temporarily unavailable."));
     } finally {
       setIsGenerating(false);
     }
